@@ -1,1 +1,30 @@
-This policy explains refund timelines, complaint resolution steps, and customer support response targets.
+COMPANY POLICY: CODE OF CONDUCT
+Last Updated: April 2026
+
+1. GENERAL EXPECTATIONS
+All employees are expected to maintain a professional environment. This 
+includes being on time for meetings, respecting deadlines, and treating 
+colleagues with kindness and professionalism.
+
+2. REMOTE WORK & TOOLS
+- Use company Slack and Email for all work-related talk.
+- Keep your calendar up to date so the team knows your availability.
+- Ensure your internet connection is stable for video calls.
+
+3. DATA SECURITY
+- Never share your login passwords with anyone.
+- Only use company-approved software for project tasks.
+- If you notice any suspicious activity, report it to IT immediately.
+
+4. DIVERSITY & INCLUSION
+We believe in equal opportunity. We do not tolerate any form of 
+harassment or discrimination. Everyone should feel safe and 
+welcome at work.
+
+5. VIOLATIONS
+Breaking these rules may lead to disciplinary action, including 
+termination of employment.
+
+--------------------------------------------------
+By saving this file, you acknowledge these rules.
+Questions? Contact: support@company.com

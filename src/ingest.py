@@ -1,3 +1,24 @@
+"""
+DEPRECATED — Legacy prototype ingestion script.
+
+This script was the original proof-of-concept for reading documents and
+writing flat JSONL records without any Pydantic schema or provenance
+tracking. It uses hardcoded paths, a random UUID for doc_id, and no
+extraction-quality signal.
+
+It is preserved as a reference only and is NOT part of the new pipeline.
+
+Replacement:
+    Document ingestion is handled by the typed reader + router layer:
+        src/ingestion/readers/text_reader.py   (.txt / .md)
+        src/ingestion/readers/pdf_reader.py    (.pdf, pypdf pass)
+        src/parsing/docling_parser.py          (.docx, layout-aware)
+        src/ingestion/router.py                (format dispatch)
+    All readers produce RawDocument + List[ParsedPage] as per
+    src/schema/models.py.
+
+Do not import or run this script in the new pipeline.
+"""
 from __future__ import annotations
 
 import json

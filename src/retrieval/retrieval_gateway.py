@@ -1,0 +1,166 @@
+"""
+Retrieval backend gateway.
+
+Lightweight dispatch module that routes retrieval queries and parent-chunk
+lookups to either the local LlamaIndex/BM25 backend or the Azure AI Search
+backend, based on ``config.search_backend``.
+
+All heavy SDK and LlamaIndex imports are deferred inside the wrapper
+functions so this module is import-light and usable in the fast test suite.
+
+``answer_pipeline.py`` calls this gateway exclusively for both retrieval
+and parent lookup — it has no direct knowledge of which backend is active.
+This centralises all backend-selection logic and keeps orchestration code
+backend-agnostic.
+
+Public API
+----------
+    route_retrieve(
+        query:     str,
+        index_dir: Path | None = None,
+        top_k:     int = 10,
+    ) -> List[RetrievedChunk]
+
+    route_lookup_parents(
+        retrieved: List[RetrievedChunk],
+        index_dir: Path | None = None,
+    ) -> List[Optional[DocumentChunk]]
+
+Backend wrappers (internal)
+---------------------------
+    _retrieve_local          — delegates to retrieve_hybrid
+    _retrieve_azure          — delegates to AzureSearchRetriever.retrieve
+    _lookup_parents_local    — delegates to lookup_parents (vector_retriever)
+    _lookup_parents_azure    — delegates to AzureSearchRetriever.lookup_parents
+
+These wrappers are module-level functions so tests can monkeypatch them
+without importing any heavy dependency.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Optional
+
+from src.core.config import config
+from src.schema.models import DocumentChunk, RetrievedChunk
+from src.utils.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Retrieval wrappers — each defers its heavy SDK / LlamaIndex import
+# ---------------------------------------------------------------------------
+
+
+def _retrieve_local(
+    query: str, index_dir: Optional[Path], top_k: int
+) -> List[RetrievedChunk]:
+    """Local LlamaIndex + BM25 hybrid path (default)."""
+    from src.retrieval.hybrid_retriever import retrieve_hybrid  # deferred — llama_index heavy
+    return retrieve_hybrid(query, index_dir=index_dir, top_k=top_k)
+
+
+def _retrieve_azure(query: str, top_k: int) -> List[RetrievedChunk]:
+    """Azure AI Search BM25 path — child-level results only."""
+    from src.retrieval.azure_search_retriever import AzureSearchRetriever  # deferred
+    retriever = AzureSearchRetriever(
+        endpoint=config.azure_search_endpoint,
+        index_name=config.azure_search_index_name,
+    )
+    return retriever.retrieve(query, top_k=top_k)
+
+
+# ---------------------------------------------------------------------------
+# Parent lookup wrappers
+# ---------------------------------------------------------------------------
+
+
+def _lookup_parents_local(
+    retrieved: List[RetrievedChunk], index_dir: Optional[Path]
+) -> List[Optional[DocumentChunk]]:
+    """Local SimpleDocumentStore path (default)."""
+    from src.retrieval.vector_retriever import lookup_parents  # deferred — llama_index heavy
+    return lookup_parents(retrieved, index_dir=index_dir)
+
+
+def _lookup_parents_azure(
+    retrieved: List[RetrievedChunk],
+) -> List[Optional[DocumentChunk]]:
+    """Azure AI Search parent point-lookup path."""
+    from src.retrieval.azure_search_retriever import AzureSearchRetriever  # deferred
+    retriever = AzureSearchRetriever(
+        endpoint=config.azure_search_endpoint,
+        index_name=config.azure_search_index_name,
+    )
+    return retriever.lookup_parents(retrieved)
+
+
+# ---------------------------------------------------------------------------
+# Public gateway functions
+# ---------------------------------------------------------------------------
+
+
+def route_retrieve(
+    query: str,
+    index_dir: Optional[Path] = None,
+    top_k: int = 10,
+) -> List[RetrievedChunk]:
+    """
+    Route a retrieval query to the configured backend.
+
+    Azure path (``search_backend='azure_search'``):
+        Returns child-level RetrievedChunks from Azure AI Search BM25.
+        ``index_dir`` is unused.
+
+    Local path (``search_backend='local'``, default):
+        Returns RetrievedChunks from the LlamaIndex/BM25 hybrid retriever.
+
+    Args:
+        query:     Natural language query string.
+        index_dir: Local index directory (local path only).
+        top_k:     Maximum number of results to return.
+
+    Returns:
+        List[RetrievedChunk]
+    """
+    if config.search_backend == "azure_search":
+        logger.info("retrieval_gateway_azure", query_chars=len(query), top_k=top_k)
+        return _retrieve_azure(query, top_k=top_k)
+
+    logger.debug("retrieval_gateway_local", query_chars=len(query), top_k=top_k)
+    return _retrieve_local(query, index_dir=index_dir, top_k=top_k)
+
+
+def route_lookup_parents(
+    retrieved: List[RetrievedChunk],
+    index_dir: Optional[Path] = None,
+) -> List[Optional[DocumentChunk]]:
+    """
+    Route parent-chunk lookup to the configured backend.
+
+    Azure path (``search_backend='azure_search'``):
+        Performs point-lookup by parent_chunk_id via
+        AzureSearchRetriever.lookup_parents. Returns project-native
+        DocumentChunk objects. ``index_dir`` is unused.
+
+    Local path (``search_backend='local'``, default):
+        Loads the SimpleDocumentStore from index_dir and looks up
+        parent_chunk_id entries.
+
+    Both paths return project-native DocumentChunk objects. No SDK types
+    cross this boundary.
+
+    Args:
+        retrieved:  Reranked child-level chunks.
+        index_dir:  Local index directory (local path only).
+
+    Returns:
+        List[Optional[DocumentChunk]] aligned to the input list.
+    """
+    if config.search_backend == "azure_search":
+        logger.info("parent_lookup_gateway_azure", count=len(retrieved))
+        return _lookup_parents_azure(retrieved)
+
+    logger.debug("parent_lookup_gateway_local", count=len(retrieved))
+    return _lookup_parents_local(retrieved, index_dir=index_dir)

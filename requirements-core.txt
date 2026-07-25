@@ -1,0 +1,21 @@
+# ============================================================
+# requirements-core.txt
+# Dependencies required for Phase 1 (foundation) only.
+# Install with: pip install -r requirements-core.txt
+# ============================================================
+
+# Typed configuration and schema
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# Environment variable loading
+python-dotenv>=1.0
+
+# Progress bars
+tqdm>=4.0
+
+# Text-based PDF reading (Phase 1 baseline; supplemented by Docling in Phase 2)
+pypdf>=4.0
+
+# Structured logging
+structlog>=24.0

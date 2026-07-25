@@ -1,0 +1,52 @@
+{
+  "excel_table": "template.xlsx",
+  "excel_sheet": "template",
+  "start_row": 1,
+  "start_col": 1,
+  "KPIs": {
+    "1": "Monaco 2024 GDP amount, real growth, and global economic comparison",
+    "2": "National GDP summary, main components, and income-based GDP structure",
+    "3": "Ten-year nominal and real GDP evolution for Monaco",
+    "4": "GDP by major economic sector and 2024 sectoral distribution",
+    "5": "GDP per capita, GDP per employee, and Monaco-France productivity comparison"
+  },
+  "queries": {
+    "1": "What was Monaco's GDP in 2024, what was the real growth rate, and how did this compare with global and Eurozone growth?",
+    "2": "What were the main components of Monaco's GDP in 2024 and how did EBITDA, employee compensation, taxes, and subsidies change?",
+    "3": "How did Monaco's nominal and real GDP evolve over the last ten years?",
+    "4": "Which major economic sectors contributed most to Monaco's 2024 GDP, and which sector declined?",
+    "5": "How are GDP per capita and GDP per employee calculated in Monaco, and what were the 2024 values?"
+  },
+  "templates": {
+    "1": "Act as an economic analyst reviewing a GDP statistical report. Your task is to answer the question strictly based on the provided document text. Use only information explicitly stated in the context. Do not assume facts from outside the document. If something is not stated, say: Not expressly stated. Answer in a compact, evidence-first format. The answer must include a clear summary, one short exact source quote from the context, and the page number if available from the context metadata. Keep the answer focused on the question and avoid unrelated details.\n\nContext:\n{context_str}\n\nQuestion:\n{query_str}\n\nAnswer:"
+  },
+  "templates_mapping": {
+    "1": "1",
+    "2": "1",
+    "3": "1",
+    "4": "1",
+    "5": "1"
+  },
+  "comments": {
+    "1": "",
+    "2": "",
+    "3": "",
+    "4": "",
+    "5": ""
+  },
+  "version": {
+    "1": "1.0",
+    "2": "1.0",
+    "3": "1.0",
+    "4": "1.0",
+    "5": "1.0"
+  },
+  "isActive": {
+    "1": true,
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true
+  },
+  "add_reg": ""
+}

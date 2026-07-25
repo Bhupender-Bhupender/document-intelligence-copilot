@@ -1,0 +1,52 @@
+{
+  "excel_table": "template.xlsx",
+  "excel_sheet": "template",
+  "start_row": 1,
+  "start_col": 1,
+  "KPIs": {
+    "1": "CCP audit purpose, scope, timeline, and regulatory basis",
+    "2": "Chemical and Chemical Products industry definition and included or excluded activities",
+    "3": "Audited CCP facilities, discharge authorizations, discharge types, and facility descriptions",
+    "4": "Inspection methodology, compliance findings, and administrative response types",
+    "5": "Overall audit findings, sector compliance issues, and recommendations"
+  },
+  "queries": {
+    "1": "What was the purpose of the CCP audit, when was it conducted, and which regulatory framework was used?",
+    "2": "How does the report define the Chemical and Chemical Products industry, and which activities are included or excluded?",
+    "3": "Which facilities were inspected in the CCP audit, and what discharge types or facility descriptions were listed?",
+    "4": "How were inspections conducted and what do the compliance outcomes and administrative responses mean?",
+    "5": "What were the main compliance findings of the audit and what recommendations were given to facilities and ENV?"
+  },
+  "templates": {
+    "1": "Act as a compliance analyst reviewing an environmental audit report. Your task is to answer the question strictly based on the provided document text. Use only information explicitly stated in the context. Do not assume facts from outside the document. If something is not stated, say: Not expressly stated. Answer in a compact, evidence-first format. The answer must include a clear summary, one short exact source quote from the context, and the page number if available from the context metadata. Keep the answer focused on the question and avoid unrelated details.\n\nContext:\n{context_str}\n\nQuestion:\n{query_str}\n\nAnswer:"
+  },
+  "templates_mapping": {
+    "1": "1",
+    "2": "1",
+    "3": "1",
+    "4": "1",
+    "5": "1"
+  },
+  "comments": {
+    "1": "",
+    "2": "",
+    "3": "",
+    "4": "",
+    "5": ""
+  },
+  "version": {
+    "1": "1.0",
+    "2": "1.0",
+    "3": "1.0",
+    "4": "1.0",
+    "5": "1.0"
+  },
+  "isActive": {
+    "1": true,
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true
+  },
+  "add_reg": ""
+}

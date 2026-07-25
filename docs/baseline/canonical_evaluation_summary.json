@@ -1,0 +1,9 @@
+{
+  "dataset_version": "evaluation_cases_v1",
+  "total_cases": 21,
+  "unique_case_ids": 21,
+  "datasets": 5,
+  "non_empty_queries": 21,
+  "mapped_document_ids": 21,
+  "unmapped_document_ids": 0
+}

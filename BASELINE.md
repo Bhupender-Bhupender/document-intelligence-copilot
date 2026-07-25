@@ -93,3 +93,13 @@ The baseline will be used to identify regressions or improvements in:
 The warnings relate to dependency deprecations in dateutil, Docling, and
 RapidOCR. They do not currently block the application but should be monitored
 during future dependency upgrades.
+
+## Evaluation corpus baseline
+
+- Documents inventoried: 9
+- Total corpus size: 2,513,105 bytes
+- Evaluation datasets: 5
+- Evaluation queries: 21
+- Dataset validation status: Valid
+- Document identity method: SHA-256-based stable IDs
+- Raw documents and local path mappings: Excluded from Git

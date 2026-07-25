@@ -1,0 +1,74 @@
+# ============================================================
+# requirements-container.txt
+# Linux container install target for the Document Intelligence Copilot.
+#
+# Derived from requirements-full.txt with the following exclusions:
+#
+#   paddlepaddle, paddleocr
+#       Excluded: no stable Python 3.12 Linux wheel is available on PyPI.
+#       The comments in requirements-full.txt note this package requires
+#       Python 3.10/3.11 on Windows. PaddleOCR is a future OCR lane; the
+#       active container OCR path uses Docling's embedded RapidOCR engine.
+#       Re-add when paddle provides a verified 3.12/Linux wheel.
+#
+# All other packages are identical to requirements-full.txt.
+# ============================================================
+
+
+# ── Foundation ───────────────────────────────────────────────────────────────
+pydantic>=2.0
+pydantic-settings>=2.0
+python-dotenv>=1.0
+tqdm>=4.0
+pypdf>=4.0
+structlog>=24.0
+
+
+# ── Parsing ──────────────────────────────────────────────────────────────────
+docling
+
+
+# ── Indexing and Storage ─────────────────────────────────────────────────────
+llama-index-core
+llama-index-readers-file
+llama-index-embeddings-huggingface
+transformers>=4.40
+torch
+accelerate
+# chromadb and llama-index-vector-stores-chroma are installed for optional
+# future use. The active vector store is LlamaIndex SimpleVectorStore (on-disk
+# JSON under data/index/). ChromaDB is NOT used by the current pipeline.
+chromadb
+llama-index-vector-stores-chroma
+
+
+# ── Hybrid Retrieval and Reranking ───────────────────────────────────────────
+rank-bm25
+llama-index-retrievers-bm25
+# Qwen3-Reranker-0.6B cross-encoder reranker (CrossEncoder API).
+# Pinned explicitly — not reliably provided as a transitive dependency.
+sentence-transformers>=2.7,<4
+
+
+# ── Answer Synthesis ─────────────────────────────────────────────────────────
+ollama
+llama-index-llms-ollama
+
+
+# ── Evaluation ───────────────────────────────────────────────────────────────
+ragas
+datasets
+
+
+# ── Service Layer ────────────────────────────────────────────────────────────
+gradio
+
+# Excel output for the local KPI batch harness (src/evaluation/kpi_batch.py).
+openpyxl>=3.1,<4
+
+
+# ── Azure Integration ────────────────────────────────────────────────────────
+azure-storage-blob>=12.0,<13
+azure-identity>=1.15,<2
+azure-ai-documentintelligence>=1.0,<2
+azure-search-documents>=11.0,<12

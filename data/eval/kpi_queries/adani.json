@@ -1,0 +1,52 @@
+{
+  "excel_table": "template.xlsx",
+  "excel_sheet": "template",
+  "start_row": 1,
+  "start_col": 1,
+  "KPIs": {
+    "1": "Adani Group business overview, industries, infrastructure projects, and controversies",
+    "2": "Adani Group profile, foundation details, market presence, and early history",
+    "3": "SWOT opportunities and threats affecting Adani Group",
+    "4": "Adani Enterprises FY22 income statement performance and profitability movement",
+    "5": "Adani Wilmar HR technology transformation, implementation, and business impact"
+  },
+  "queries": {
+    "1": "What does the report say about Adani Group's main industries, key infrastructure projects, and major controversies?",
+    "2": "What are the basic company profile details of Adani Group and how did its early business history develop?",
+    "3": "What opportunities and threats for Adani Group are identified in the SWOT analysis?",
+    "4": "How did Adani Enterprises' FY22 operating income, operating profit, finance costs, net profit, and margins change compared with FY21?",
+    "5": "What HR technology changes did Adani Wilmar implement and what impact did the report mention?"
+  },
+  "templates": {
+    "1": "Act as a business analyst reviewing an industrial analysis report on Adani Group. Your task is to answer the question strictly based on the provided document text. Use only information explicitly stated in the context. Do not assume facts from outside the document. If something is not stated, say: Not expressly stated. Answer in a compact, evidence-first format. The answer must include a clear summary, one short exact source quote from the context, and the page number if available from the context metadata. Keep the answer focused on the question and avoid unrelated details.\n\nContext:\n{context_str}\n\nQuestion:\n{query_str}\n\nAnswer:"
+  },
+  "templates_mapping": {
+    "1": "1",
+    "2": "1",
+    "3": "1",
+    "4": "1",
+    "5": "1"
+  },
+  "comments": {
+    "1": "",
+    "2": "",
+    "3": "",
+    "4": "",
+    "5": ""
+  },
+  "version": {
+    "1": "1.0",
+    "2": "1.0",
+    "3": "1.0",
+    "4": "1.0",
+    "5": "1.0"
+  },
+  "isActive": {
+    "1": true,
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true
+  },
+  "add_reg": ""
+}

@@ -1,3 +1,20 @@
+"""
+DEPRECATED — Legacy prototype chunking script.
+
+This script was the original proof-of-concept for splitting flat JSONL
+record text into word-window chunks without any Pydantic schema or
+hierarchical parent/child structure.
+
+It is preserved as a reference only and is NOT part of the new pipeline.
+
+Replacement:
+    Chunking is handled by the typed chunker layer:
+        src/chunking/word_chunker.py            (flat sliding-window)
+        src/chunking/hierarchical_chunker.py    (parent / child, Phase 3+)
+    Both produce List[DocumentChunk] as per src/schema/models.py.
+
+Do not import or run this script in the new pipeline.
+"""
 from __future__ import annotations
 
 import json

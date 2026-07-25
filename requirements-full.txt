@@ -1,0 +1,106 @@
+# ============================================================
+# requirements-full.txt
+# Complete target stack for the Document Intelligence Copilot.
+#
+# Install by group as each phase is built.
+# Heavy dependencies (torch, docling, paddleocr) should be
+# introduced only when the corresponding phase begins.
+# ============================================================
+
+
+# ── Phase 1: Foundation ──────────────────────────────────────────────────────
+pydantic>=2.0
+pydantic-settings>=2.0
+python-dotenv>=1.0
+tqdm>=4.0
+pypdf>=4.0
+structlog>=24.0
+
+
+# ── Phase 2: Parsing and OCR ─────────────────────────────────────────────────
+
+# Primary document parser and normaliser (.pdf, .docx, .md, .txt, tables)
+docling
+
+# Scanned / image-heavy PDF lane — DEFERRED
+# The active local OCR path uses Docling's embedded RapidOCR engine (already
+# bundled in docling — no separate install required). PaddleOCR is a planned
+# future lane for standalone high-accuracy OCR. Python 3.12 wheels exist but
+# PaddleOCR is NOT wired into the current OCR routing code; install only when
+# actively implementing the PaddleOCR lane.
+# paddlepaddle
+# paddleocr
+
+
+# ── Phase 4: Indexing and Storage ────────────────────────────────────────────
+
+# LlamaIndex core framework and file readers
+llama-index-core
+llama-index-readers-file
+
+# Qwen3-Embedding-0.6B via HuggingFace Hub
+llama-index-embeddings-huggingface
+transformers>=4.40
+torch
+accelerate
+
+# ChromaDB and the LlamaIndex ChromaDB adapter are installed here for
+# optional future use, but ChromaDB is NOT the active vector store in the
+# current pipeline. The active store is LlamaIndex's built-in SimpleVectorStore
+# persisted to disk under data/index/. See src/indexing/index_builder.py.
+chromadb
+llama-index-vector-stores-chroma
+
+
+# ── Phase 5: Hybrid Retrieval and Reranking ──────────────────────────────────
+
+# BM25 / lexical retrieval
+rank-bm25
+llama-index-retrievers-bm25
+
+# Qwen3-Reranker-0.6B cross-encoder reranker.
+# sentence-transformers is the direct runtime dependency (CrossEncoder API).
+# It is NOT reliably listed as a transitive dependency by all versions of
+# llama-index-embeddings-huggingface, so it is pinned explicitly here.
+sentence-transformers>=2.7,<4
+
+
+# ── Phase 6: Answer Synthesis ────────────────────────────────────────────────
+
+# Qwen3-8B served through a local Ollama daemon.
+# Ollama is a separate install — it is NOT a pip package.
+# Install Ollama: https://ollama.com/download
+# Pull the model:  ollama pull qwen3:8b
+ollama
+llama-index-llms-ollama
+
+
+# ── Phase 9: Evaluation ──────────────────────────────────────────────────────
+
+# RAGAS-style retrieval-augmented generation evaluation metrics
+ragas
+
+# HuggingFace datasets for eval set management
+datasets
+
+
+# ── Phase 10: Service Layer and Local App ────────────────────────────────────
+
+# UI framework (Gradio is the primary option; Streamlit is the alternative)
+gradio
+
+# Excel output for the local KPI batch harness (src/evaluation/kpi_batch.py).
+openpyxl>=3.1,<4
+
+
+# ── Phase 11: Azure Integration and Deployment Mapping ───────────────────────
+
+# Blob Storage adapter (active — required for storage_backend='azure_blob').
+azure-storage-blob>=12.0,<13
+azure-identity>=1.15,<2
+
+# Uncomment when Azure AI services adapters are implemented.
+# Azure DI OCR adapter (active — required for ocr_backend='azure_di').
+azure-ai-documentintelligence>=1.0,<2
+# Azure AI Search adapter (active — required for search_backend='azure_search').
+azure-search-documents>=11.0,<12

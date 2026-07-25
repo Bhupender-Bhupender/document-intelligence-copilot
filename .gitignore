@@ -1,4 +1,61 @@
-.venv/
-__pycache__/
-*.pyc
+# Environment and credentials
 .env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+.databrickscfg
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local models and caches
+models/
+model_cache/
+.ollama/
+
+# Generated indexes and databases
+data/index/
+data/chroma_db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded and generated document data
+data/raw/
+data/processed/
+uploads/
+outputs/
+exports/
+temp/
+tmp/
+
+# Logs and temporary test results
+*.log
+pip_out.txt
+pipeline_results.txt
+results*.txt
+test_*.txt
+
+# Databricks generated files
+.databricks/
+.bundle/
+
+# Generated evaluation artifacts
+data/eval/*.txt
+data/eval/results/
+data/eval/smoke/results/
+data/eval/smoke/pdfs/

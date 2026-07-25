@@ -1,3 +1,20 @@
+"""
+DEPRECATED — Legacy prototype embedding script.
+
+This script was the original proof-of-concept for embedding and vector
+storage. It uses sentence-transformers/all-MiniLM-L6-v2 and writes
+directly to a ChromaDB PersistentClient.
+
+It is preserved as a reference only and is NOT part of the new pipeline.
+
+Replacement:
+    Embedding will be handled by the LlamaIndex indexing layer using
+    Qwen3-Embedding-0.6B (HuggingFace Hub) in Phase 4.
+    The target vector store is accessed exclusively via LlamaIndex
+    abstractions, not via direct ChromaDB client calls.
+
+Do not import or run this script in the new pipeline.
+"""
 from __future__ import annotations
 
 import json

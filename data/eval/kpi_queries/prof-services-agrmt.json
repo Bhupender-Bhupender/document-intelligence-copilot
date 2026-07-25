@@ -1,0 +1,52 @@
+{
+  "excel_table": "template.xlsx",
+  "excel_sheet": "template",
+  "start_row": 1,
+  "start_col": 1,
+  "KPIs": {
+  "1": "Services, deliverables, schedules, timetable, and Consultant obligations",
+  "2": "Cornell Data, confidentiality, privacy, cybersecurity, and legal compliance obligations",
+  "3": "Contract term, termination rights, exit obligations, and return or deletion of Cornell Data",
+  "4": "Client control rights, audit rights, subcontracting, and oversight",
+  "5": "Commercial risk allocation, key gaps, and negotiation flags"
+},
+  "queries": {
+    "1": "What services, deliverables, and performance obligations does the Consultant undertake under the agreement? Summarize the scope of services, referenced schedules, timetable obligations, personnel requirements, and any explicit limits on the Consultant's role. Base the answer strictly on the contract text and cite the relevant sections.",
+    "2": "What obligations does the agreement impose regarding Cornell Data, confidential information, privacy, student information, personal data, cybersecurity, and related legal compliance? Include any restrictions on data use, return or deletion requirements, incident or breach notification duties, and references to FERPA, HIPAA, GLBA, export controls, or other laws explicitly named in the contract.",
+    "3": "What does the agreement say about contract term, termination rights, consequences of termination, exit-related obligations, return of work product, and return, removal, or deletion of Cornell Data? Identify what support the Consultant must provide at or after termination and note anything that is not expressly addressed.",
+    "4": "What rights and control mechanisms does Cornell retain regarding direction of the services, approval of personnel changes, audit and inspection, access to data, subcontracting oversight, compliance monitoring, and enforcement? Explain how Cornell can oversee the Consultant based strictly on the contract text.",
+    "5": "Identify the main contractual risk points, ambiguities, and negotiation flags in this agreement from a commercial, data protection, and outsourcing oversight perspective. Focus on issues such as unclear scope in schedules, weak service levels, subcontracting control, termination transition support, liability structure, privacy and security obligations, audit or compliance enforceability. Base the assessment strictly on the contract text and clearly distinguish between stated provisions and missing or unclear points."
+  },
+  "templates": {
+    "1": "Act as a senior commercial contracts, technology, privacy, and outsourcing lawyer reviewing a professional services agreement. Your task is to assess the contract strictly based on the provided document text. Use only information explicitly stated in the context. Do not assume facts from missing schedules, appendices, or referenced documents unless their wording is actually shown in the provided text. If something is not expressly stated, say: Not expressly stated. Answer in a compact, evidence-first format. Use 3 to 5 short paragraphs only. Each paragraph must contain one distinct finding only. Do not merge unrelated clauses into one paragraph. Prefer fewer supported findings over a broad combined summary. Do not add a long executive summary. In each paragraph include: Finding, Contract basis, and Limitation only if something is referenced but not actually shown in the text. Keep each finding narrow enough that it could be supported by one short exact quote from the contract. When answering, cite the required section clearly, precisely, and in the required format.\n\nContext:\n{context_str}\n\nQuestion:\n{query_str}\n\nAnswer:"
+  },
+  "templates_mapping": {
+    "1": "1",
+    "2": "1",
+    "3": "1",
+    "4": "1",
+    "5": "1"
+  },
+  "comments": {
+    "1": "",
+    "2": "",
+    "3": "",
+    "4": "",
+    "5": ""
+  },
+  "version": {
+    "1": "1.0",
+    "2": "1.0",
+    "3": "1.0",
+    "4": "1.0",
+    "5": "1.0"
+  },
+  "isActive": {
+    "1": true,
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true
+  },
+  "add_reg": ""
+}

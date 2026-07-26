@@ -1,0 +1,39 @@
+{
+  "baseline_name": "local-baseline-v1",
+  "dataset_version": "evaluation_cases_v1",
+  "run_started_at": "2026-07-26T15:43:37.544392+00:00",
+  "run_completed_at": "2026-07-26T16:27:33.631474+00:00",
+  "configuration": {
+    "retrieval_top_k": 4,
+    "rerank_top_k": 2,
+    "model": "qwen3:8b"
+  },
+  "documents_indexed": 4,
+  "cases_attempted": 21,
+  "error_count": 0,
+  "wall_time_seconds": 2636.08,
+  "deterministic_metrics": {
+    "report_id": "d5956622-e495-4f3e-8bdb-8497f59392c5",
+    "total": 21,
+    "answer_non_empty_count": 21,
+    "answer_non_empty_rate": 1.0,
+    "citation_valid_count": 42,
+    "citation_valid_rate": 1.0,
+    "invalid_citation_count": 0,
+    "invalid_citation_rate": 0.0,
+    "no_source_count": 0,
+    "no_source_rate": 0.0,
+    "no_supporting_chunk_count": 0,
+    "no_supporting_chunk_rate": 0.0,
+    "source_hit_count": 0,
+    "source_hit_rate": 0.0,
+    "file_hit_count": 21,
+    "file_hit_rate": 1.0,
+    "page_hit_count": 0,
+    "page_hit_rate": 0.0,
+    "citations_all_valid_count": 21,
+    "citations_all_valid_rate": 1.0,
+    "flag_frequency": {}
+  },
+  "private_detailed_results": "data\\eval\\baseline_runtime\\deterministic_results.jsonl"
+}

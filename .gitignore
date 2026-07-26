@@ -59,3 +59,9 @@ data/eval/*.txt
 data/eval/results/
 data/eval/smoke/results/
 data/eval/smoke/pdfs/
+
+# Private baseline path mappings
+docs/baseline/*_local_mapping.csv
+
+# Private/generated baseline evaluation runs
+data/eval/baseline_runtime/

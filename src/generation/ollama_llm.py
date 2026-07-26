@@ -53,7 +53,7 @@ logger = get_logger(__name__)
 
 _CLIENT: Optional[httpx.Client] = None
 _CHAT_PATH = "/api/chat"
-_DEFAULT_TIMEOUT = 120.0
+_DEFAULT_TIMEOUT = 300.0
 
 
 def _get_client() -> httpx.Client:
@@ -108,6 +108,11 @@ def generate(
         "model": resolved_model,
         "messages": messages,
         "stream": False,
+        "think": False,
+        "keep_alive": "30m",
+        "options": {
+            "num_predict": 384,
+        },
     }
 
     logger.info(

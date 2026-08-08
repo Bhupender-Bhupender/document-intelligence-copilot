@@ -93,3 +93,41 @@ The baseline will be used to identify regressions or improvements in:
 The warnings relate to dependency deprecations in dateutil, Docling, and
 RapidOCR. They do not currently block the application but should be monitored
 during future dependency upgrades.
+
+## Evaluation corpus baseline
+
+- Documents inventoried: 9
+- Total corpus size: 2,513,105 bytes
+- Evaluation datasets: 5
+- Evaluation queries: 21
+- Dataset validation status: Valid
+- Document identity method: SHA-256-based stable IDs
+- Raw documents and local path mappings: Excluded from Git
+
+## Formal baseline completion
+
+Phase 0 evaluation completed successfully.
+
+### Deterministic results
+
+- Evaluation cases: 21
+- Execution errors: 0
+- Non-empty answer rate: 100%
+- Correct-file retrieval rate: 100%
+- Citation validity rate: 100%
+- Answers with all citations valid: 100%
+
+### Semantic results
+
+- Mean groundedness: 76.7%
+- Mean answer relevance: 93.3%
+- Mean context relevance: 89.0%
+- Mean completeness: 74.3%
+- Combined threshold pass rate: 57.1%
+- Judge parse failures: 0
+
+Detailed aggregate results are available in:
+
+- `docs/baseline/deterministic_baseline_summary.json`
+- `docs/baseline/semantic_baseline_summary.json`
+- `docs/baseline/local_baseline_report_v1.md`

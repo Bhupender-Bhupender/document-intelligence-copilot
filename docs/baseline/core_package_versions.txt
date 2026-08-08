@@ -1,0 +1,6 @@
+Name: gradio
+Version: 6.14.0
+Name: docling
+Version: 2.95.0
+Name: pydantic
+Version: 2.13.3

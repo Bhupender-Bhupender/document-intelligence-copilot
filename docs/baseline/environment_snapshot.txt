@@ -1,0 +1,34 @@
+# Local Baseline Environment Snapshot
+Captured: 2026-07-25 17:12:01
+
+## Git
+Branch: productionization/phase-0-evaluation
+Commit: 02a6eaa7aacd251445150d405af5f701fb7171ae
+Baseline tag commit: 8afe52b7ed233dd20b3f03ee6824ee3f7cb1545b
+
+## Python
+Python 3.12.1
+pip 26.0.1 from C:\Users\Bhupender\Desktop\Job\Practical\Business AI Assistance\document-intelligence-copilot\.venv\Lib\site-packages\pip (python 3.12) 
+
+## Operating system
+Caption        : Microsoft Windows 11 Home Single Language
+Version        : 10.0.26200
+OSArchitecture : 64-bit
+
+## Processor
+Name                      : 11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz
+NumberOfCores             : 4
+NumberOfLogicalProcessors : 8
+
+## Memory
+Total RAM GB: 15.77
+
+## Docker
+Docker version 29.6.1, build 8900f1d
+Docker Compose version v5.2.0
+
+## Ollama
+ollama version is 0.32.3
+
+## Installed Ollama models
+NAME        ID              SIZE      MODIFIED      qwen3:8b    500a1f067a9f    5.2 GB    2 months ago    

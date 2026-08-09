@@ -40,6 +40,15 @@ class AppConfig(BaseSettings):
     )
 
     # ------------------------------------------------------------------ #
+    # Runtime environment
+    # ------------------------------------------------------------------ #
+
+    runtime_mode: Literal["local", "databricks"] = Field(
+        default="local",
+        description="Execution environment for the application.",
+    )
+
+    # ------------------------------------------------------------------ #
     # Path settings                                                        #
     # ------------------------------------------------------------------ #
 
@@ -78,6 +87,14 @@ class AppConfig(BaseSettings):
         default="Qwen/Qwen3-Reranker-0.6B",
         description="HuggingFace model ID for reranking (Phase 5+).",
     )
+    generation_backend: Literal["ollama", "databricks"] = Field(
+        default="ollama",
+        description=(
+            "Generation provider. 'ollama' is used locally; "
+            "'databricks' is implemented during the serving phase."
+        ),
+    )
+
     generation_model: str = Field(
         default="qwen3:8b",
         description="Ollama model tag for answer generation (Phase 6+).",

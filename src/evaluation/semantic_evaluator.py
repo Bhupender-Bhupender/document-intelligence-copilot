@@ -167,7 +167,7 @@ def _make_default_judge(
     connection to Ollama.
     """
     def _call(messages: List[dict]) -> str:
-        from src.generation.ollama_llm import generate  # lazy import
+        from src.generation.generation_gateway import generate  # lazy import
         return generate(messages, model=judge_model)
 
     return _call
@@ -381,3 +381,4 @@ def _aggregate_scores(
         parse_failure_count=parse_failure_count,
         per_example=scores,
     )
+

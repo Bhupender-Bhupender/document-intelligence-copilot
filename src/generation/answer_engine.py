@@ -62,7 +62,7 @@ from src.schema.models import AnswerResponse, DocumentChunk, RetrievedChunk
 from src.core.config import config
 from src.utils.logging_utils import get_logger
 from src.generation.prompt_templates import build_grounded_messages
-from src.generation.ollama_llm import generate
+from src.generation.generation_gateway import generate
 
 logger = get_logger(__name__)
 
@@ -158,3 +158,4 @@ def synthesise(
         validation_flags=[],
         latency_ms=latency_ms,
     )
+

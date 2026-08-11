@@ -1,0 +1,23 @@
+# Databricks runtime dependencies
+#
+# Generated from the validated local-baseline-v1 environment.
+# Do NOT add pyspark: Databricks serverless provides Spark.
+#
+# Phase 6 scope:
+# - document readers
+# - Docling parsing
+# - local model dependencies
+# - RapidOCR fallback
+# - project schema/config dependencies
+#
+pydantic==2.13.3
+pydantic-settings==2.14.0
+pypdf==6.10.2
+docling==2.95.0
+docling-core==2.77.0
+docling-parse==5.11.0
+torch==2.12.0
+torchvision==0.27.0
+rapidocr==3.8.1
+pillow==12.2.0
+filetype==1.2.0

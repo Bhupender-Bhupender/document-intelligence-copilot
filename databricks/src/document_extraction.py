@@ -1,10 +1,42 @@
 from __future__ import annotations
 
-import uuid
-
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
+
+from pyspark.sql.types import (
+    BooleanType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
+
+
+PAGE_SCHEMA = StructType([
+    StructField("page_id", StringType(), False),
+    StructField("document_id", StringType(), False),
+    StructField("page_number", IntegerType(), False),
+    StructField("text", StringType(), False),
+    StructField("word_count", IntegerType(), False),
+    StructField("extraction_method", StringType(), False),
+    StructField("extraction_quality", StringType(), False),
+    StructField("requires_ocr", BooleanType(), False),
+    StructField("created_at", TimestampType(), False),
+])
+
+
+BLOCK_SCHEMA = StructType([
+    StructField("block_id", StringType(), False),
+    StructField("document_id", StringType(), False),
+    StructField("page_id", StringType(), False),
+    StructField("page_number", IntegerType(), False),
+    StructField("block_order", IntegerType(), False),
+    StructField("block_type", StringType(), False),
+    StructField("section_title", StringType(), True),
+    StructField("text", StringType(), False),
+    StructField("created_at", TimestampType(), False),
+])
 
 
 def utc_now() -> datetime:
@@ -89,11 +121,8 @@ def build_page_and_block_rows(
             data.get("word_count") or 0
         )
 
-        (
-            quality,
-            requires_ocr,
-        ) = classify_extraction(
-            word_count
+        quality, requires_ocr = (
+            classify_extraction(word_count)
         )
 
         text = (
@@ -103,33 +132,17 @@ def build_page_and_block_rows(
         )
 
         page_rows.append({
-            "page_id":
-                page_id,
-
-            "document_id":
-                document_id,
-
-            "page_number":
-                page_number,
-
-            "text":
-                text,
-
-            "word_count":
-                word_count,
-
+            "page_id": page_id,
+            "document_id": document_id,
+            "page_number": page_number,
+            "text": text,
+            "word_count": word_count,
             "extraction_method":
                 data.get("parse_method")
                 or "unknown",
-
-            "extraction_quality":
-                quality,
-
-            "requires_ocr":
-                requires_ocr,
-
-            "created_at":
-                created_at,
+            "extraction_quality": quality,
+            "requires_ocr": requires_ocr,
+            "created_at": created_at,
         })
 
         layout_blocks = (
@@ -137,20 +150,28 @@ def build_page_and_block_rows(
             or []
         )
 
-        for index, block in enumerate(
+        for fallback_order, block in enumerate(
             layout_blocks,
             start=1,
         ):
-            block_data = normalize_block(
-                block
+
+            block_data = normalize_block(block)
+
+            reading_order = block_data.get(
+                "reading_order"
             )
+
+            if reading_order is None:
+                block_order = fallback_order
+            else:
+                block_order = int(reading_order)
 
             block_rows.append({
                 "block_id":
                     stable_block_id(
                         document_id,
                         page_number,
-                        index,
+                        block_order,
                     ),
 
                 "document_id":
@@ -163,34 +184,19 @@ def build_page_and_block_rows(
                     page_number,
 
                 "block_order":
-                    index,
+                    block_order,
 
                 "block_type":
-                    (
-                        block_data.get("block_type")
-                        or block_data.get("type")
-                        or block_data.get("label")
-                        or "unknown"
-                    ),
+                    block_data.get("block_type")
+                    or "unknown",
 
                 "section_title":
-                    (
-                        block_data.get(
-                            "section_title"
-                        )
-                        or data.get(
-                            "section_title"
-                        )
-                    ),
+                    block_data.get("section_title")
+                    or data.get("section_title"),
 
                 "text":
-                    (
-                        block_data.get("text")
-                        or block_data.get(
-                            "normalized_text"
-                        )
-                        or ""
-                    ),
+                    block_data.get("text")
+                    or "",
 
                 "created_at":
                     created_at,

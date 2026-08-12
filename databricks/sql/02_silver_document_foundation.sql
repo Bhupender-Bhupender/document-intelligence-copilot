@@ -8,30 +8,11 @@ COMMENT 'Validated and normalized document processing layer';
 
 CREATE TABLE IF NOT EXISTS docintel_dev.silver.documents
 (
-    document_id        STRING,
-    sha256             STRING,
-
-    file_name          STRING,
-    source_file_path   STRING,
-    file_extension     STRING,
-    file_size_bytes    BIGINT,
-
-    source_system      STRING,
-    ingestion_batch_id STRING,
-
-    parse_strategy     STRING,
-    ocr_required       BOOLEAN,
-
-    routing_status     STRING,
-    route_reason       STRING,
-    routed_at          TIMESTAMP,
-
-    parser_version     STRING,
-
-    is_current         BOOLEAN,
-
-    created_at         TIMESTAMP,
-    updated_at         TIMESTAMP
+    extraction_status STRING,
+    page_count        INT,
+    block_count       INT,
+    ocr_page_count    INT,
+    extracted_at      TIMESTAMP,
 )
 USING DELTA
 COMMENT 'Normalized document registry and processing route';

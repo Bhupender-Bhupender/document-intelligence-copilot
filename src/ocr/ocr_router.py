@@ -91,189 +91,297 @@ def _run_azure_di_ocr(
 # --------------------------------------------------------------------------- #
 # Public API                                                                   #
 # --------------------------------------------------------------------------- #
+def _is_ocr_candidate(
+    page: ParsedPage,
+    *,
+    recover_weak: bool = False,
+) -> bool:
+    """Return True when a page should be sent through OCR."""
 
+    if page.extraction_status == "empty":
+        return True
+
+    if (
+        recover_weak
+        and page.extraction_status == "weak"
+    ):
+        return True
+
+    return False
+
+
+def _is_better_recovery(
+    original: ParsedPage,
+    recovered: ParsedPage,
+) -> bool:
+    """Accept OCR only when it improves extracted text volume."""
+
+    original_words = int(
+        getattr(original, "word_count", 0) or 0
+    )
+
+    recovered_words = int(
+        getattr(recovered, "word_count", 0) or 0
+    )
+
+    return recovered_words > original_words
 
 def route_pdf_pages_through_ocr(
     file_path: Path,
     raw_document: RawDocument,
     pages: List[ParsedPage],
+    *,
+    recover_weak: bool = False,
 ) -> List[ParsedPage]:
     """
-    Attempt OCR recovery for PDF pages where pypdf extracted no text.
+    Attempt selective OCR recovery for PDF pages.
 
-    Inspects the page list produced by Pass 1 (pypdf) and, for each page
-    where extraction_status == "empty", routes to the configured OCR backend:
+    Default behaviour is backward compatible:
+    only pages classified as ``empty`` are OCR candidates.
 
-        ocr_backend="local"    — Docling/RapidOCR (default)
-        ocr_backend="azure_di" — Azure AI Document Intelligence prebuilt-read
-
-    Pages that are not candidates are returned unchanged.
-
-    Args:
-        file_path:    Path to the original PDF file.
-        raw_document: RawDocument produced by the pypdf pass (provenance only).
-        pages:        ParsedPage list from the pypdf pass (Pass 1 output).
-
-    Returns:
-        Updated list of ParsedPage records.  Same length, same order as input.
-        Identity fields (page_id, doc_id, page_number) are never modified.
-        Non-candidate pages are returned as-is (same object, no copy).
-
-    Raises:
-        Nothing.  All backend failures are caught and logged.
-        A page that fails OCR recovery retains its original "empty" record.
+    When ``recover_weak=True``, pages classified as ``weak`` are also
+    candidates. An OCR result replaces the native extraction only when
+    its extracted word count is greater than the original page.
     """
-    # Identify candidate pages (0-indexed positions in the input list).
-    empty_indices = [
-        i for i, p in enumerate(pages) if p.extraction_status == "empty"
+
+    candidate_indices = [
+        i
+        for i, page in enumerate(pages)
+        if _is_ocr_candidate(
+            page,
+            recover_weak=recover_weak,
+        )
     ]
 
-    if not empty_indices:
+    if not candidate_indices:
         logger.debug(
-            "ocr_router: no empty pages — skipping OCR pass",
+            "ocr_router: no OCR candidates",
             file=file_path.name,
             total_pages=len(pages),
+            recover_weak=recover_weak,
         )
         return pages
 
-    # ------------------------------------------------------------------ #
-    # Azure DI OCR backend                                                #
-    # ------------------------------------------------------------------ #
+    # --------------------------------------------------------------
+    # Azure Document Intelligence
+    # --------------------------------------------------------------
 
     if config.ocr_backend == "azure_di":
+
         logger.info(
-            "ocr_router: routing empty pages through Azure DI",
+            "ocr_router: routing candidate pages through Azure DI",
             file=file_path.name,
-            empty_page_count=len(empty_indices),
+            candidate_page_count=len(
+                candidate_indices
+            ),
             total_pages=len(pages),
+            recover_weak=recover_weak,
         )
-        empty_page_list = [pages[i] for i in empty_indices]
+
+        candidate_pages = [
+            pages[i]
+            for i in candidate_indices
+        ]
+
         try:
             recovered_pages = _run_azure_di_ocr(
-                config.azure_di_endpoint, file_path, empty_page_list
+                config.azure_di_endpoint,
+                file_path,
+                candidate_pages,
             )
+
         except Exception as exc:
             logger.warning(
-                "ocr_router: Azure DI recovery failed — OCR recovery skipped",
+                "ocr_router: Azure DI recovery failed",
                 file=file_path.name,
                 error=str(exc),
             )
             return pages
 
         result = list(pages)
-        recovered = 0
-        for idx, updated in zip(empty_indices, recovered_pages):
-            result[idx] = updated
-            if updated.extraction_status != "empty":
-                recovered += 1
+
+        accepted = 0
+        resolved = 0
+
+        for idx, recovered_page in zip(
+            candidate_indices,
+            recovered_pages,
+        ):
+            original = pages[idx]
+
+            if not _is_better_recovery(
+                original,
+                recovered_page,
+            ):
+                continue
+
+            result[idx] = recovered_page
+            accepted += 1
+
+            if recovered_page.extraction_status not in {
+                "empty",
+                "weak",
+            }:
+                resolved += 1
 
         logger.info(
-            "ocr_router: Azure DI OCR pass complete",
+            "ocr_router: Azure DI OCR complete",
             file=file_path.name,
-            routed=len(empty_indices),
-            recovered=recovered,
-            still_empty=len(empty_indices) - recovered,
+            routed=len(candidate_indices),
+            accepted=accepted,
+            resolved=resolved,
         )
+
         return result
 
-    # ------------------------------------------------------------------ #
-    # Local (Docling / RapidOCR) backend — default                       #
-    # ------------------------------------------------------------------ #
+    # --------------------------------------------------------------
+    # Local Docling / RapidOCR
+    # --------------------------------------------------------------
 
     logger.info(
-        "ocr_router: routing empty pages through Docling/RapidOCR",
+        "ocr_router: routing candidate pages through Docling/RapidOCR",
         file=file_path.name,
-        empty_page_count=len(empty_indices),
+        candidate_page_count=len(
+            candidate_indices
+        ),
         total_pages=len(pages),
+        recover_weak=recover_weak,
     )
 
-    # Run Docling on the full PDF once.  The DocumentConverter singleton means
-    # weights are already warm if the parser was called earlier in this process.
+    # Docling processes the PDF once. We only use its result for the
+    # pages identified as OCR candidates.
     try:
-        _, docling_pages = _run_local_ocr(file_path)
+        _, docling_pages = _run_local_ocr(
+            file_path
+        )
+
     except Exception as exc:
         logger.warning(
-            "ocr_router: Docling conversion failed — OCR recovery skipped",
+            "ocr_router: Docling conversion failed",
             file=file_path.name,
             error=str(exc),
         )
         return pages
 
-    # Build a lookup keyed by page_number (1-indexed, matching pypdf convention).
-    docling_by_page: dict[int, ParsedPage] = {
-        p.page_number: p for p in docling_pages
+    docling_by_page: dict[
+        int,
+        ParsedPage,
+    ] = {
+        page.page_number: page
+        for page in docling_pages
     }
 
-    # Work on a shallow copy of the list so we never mutate the caller's list.
     result = list(pages)
-    recovered = 0
 
-    for idx in empty_indices:
+    accepted = 0
+    resolved = 0
+
+    for idx in candidate_indices:
+
         original = pages[idx]
-        page_no = original.page_number
-        docling_page = docling_by_page.get(page_no)
+
+        docling_page = docling_by_page.get(
+            original.page_number
+        )
 
         if docling_page is None:
             logger.debug(
-                "ocr_router: Docling produced no page for this number — keeping empty",
+                "ocr_router: no Docling result for candidate page",
                 file=file_path.name,
-                page_number=page_no,
+                page_number=original.page_number,
             )
             continue
 
-        # Re-classify using the Docling-extracted text to determine if recovery
-        # actually produced usable content.
-        norm = normalize_text(docling_page.raw_text)
-        recovered_status = classify_extraction_status(norm)
+        norm = normalize_text(
+            docling_page.raw_text
+        )
 
-        # Build the updated page, preserving identity fields exactly.
-        updated = ParsedPage(
-            # ── identity — never changed ─────────────────────────────────────
+        recovered_status = (
+            classify_extraction_status(
+                norm
+            )
+        )
+
+        recovered_page = ParsedPage(
+            # Preserve identity
             page_id=original.page_id,
             doc_id=original.doc_id,
             page_number=original.page_number,
-            # ── recovered text content ───────────────────────────────────────
-            raw_text=clean_text(docling_page.raw_text),
+
+            # Recovered content
+            raw_text=clean_text(
+                docling_page.raw_text
+            ),
             normalized_text=norm,
-            word_count=len(norm.split()) if norm.strip() else 0,
+            word_count=(
+                len(norm.split())
+                if norm.strip()
+                else 0
+            ),
             char_count=len(norm),
-            # ── OCR metadata ─────────────────────────────────────────────────
-            # parse_method records the extraction path; see module docstring.
+
+            # OCR provenance
             parse_method="rapidocr",
             extraction_status=recovered_status,
             ocr_engine="rapidocr",
-            # ocr_confidence intentionally left None — RapidOCR confidence is
-            # not exposed through Docling's public API. See module docstring.
             ocr_confidence=None,
-            # ── layout enrichment (if Docling produced it) ───────────────────
-            section_title=docling_page.section_title,
-            layout_blocks=docling_page.layout_blocks,
+
+            # Layout enrichment
+            section_title=(
+                docling_page.section_title
+            ),
+            layout_blocks=(
+                docling_page.layout_blocks
+            ),
         )
 
-        result[idx] = updated
+        # Never replace useful native text with a worse OCR result.
+        if not _is_better_recovery(
+            original,
+            recovered_page,
+        ):
+            logger.debug(
+                "ocr_router: OCR result not better — preserving native page",
+                file=file_path.name,
+                page_number=original.page_number,
+                native_words=original.word_count,
+                ocr_words=recovered_page.word_count,
+            )
+            continue
 
-        if recovered_status != "empty":
-            recovered += 1
-            logger.debug(
-                "ocr_router: page recovered",
-                file=file_path.name,
-                page_number=page_no,
-                status=recovered_status,
-                word_count=updated.word_count,
-            )
-        else:
-            logger.debug(
-                "ocr_router: Docling also produced empty text for page",
-                file=file_path.name,
-                page_number=page_no,
-            )
+        result[idx] = recovered_page
+        accepted += 1
+
+        if recovered_status not in {
+            "empty",
+            "weak",
+        }:
+            resolved += 1
+
+        logger.debug(
+            "ocr_router: OCR recovery accepted",
+            file=file_path.name,
+            page_number=original.page_number,
+            original_words=original.word_count,
+            recovered_words=(
+                recovered_page.word_count
+            ),
+            recovered_status=(
+                recovered_status
+            ),
+        )
 
     logger.info(
         "ocr_router: OCR pass complete",
         file=file_path.name,
-        routed=len(empty_indices),
-        recovered=recovered,
-        still_empty=len(empty_indices) - recovered,
+        routed=len(candidate_indices),
+        accepted=accepted,
+        resolved=resolved,
+        remaining=(
+            len(candidate_indices)
+            - resolved
+        ),
     )
 
     return result
+   

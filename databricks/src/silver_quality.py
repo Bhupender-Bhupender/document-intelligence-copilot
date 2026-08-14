@@ -581,3 +581,25 @@ def run_silver_quality_checks(
             critical_failures,
         "status": run_status,
     }
+
+def enforce_quality_gate(
+    result: dict[str, Any],
+) -> None:
+    """
+    Stop downstream processing when canonical
+    Silver has critical quality violations.
+    """
+
+    critical_failures = int(
+        result.get(
+            "critical_failures",
+            0,
+        )
+    )
+
+    if critical_failures > 0:
+        raise RuntimeError(
+            "Silver quality gate failed: "
+            f"{critical_failures} critical "
+            "quality checks failed."
+        )

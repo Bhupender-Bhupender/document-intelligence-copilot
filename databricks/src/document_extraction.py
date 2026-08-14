@@ -156,6 +156,13 @@ def build_page_and_block_rows(
         ):
 
             block_data = normalize_block(block)
+            block_text = (
+            block_data.get("text")
+            or ""
+            ).strip()
+
+            if not block_text:
+                continue
 
             reading_order = block_data.get(
                 "reading_order"
@@ -195,8 +202,7 @@ def build_page_and_block_rows(
                     or data.get("section_title"),
 
                 "text":
-                    block_data.get("text")
-                    or "",
+                    block_text,
 
                 "created_at":
                     created_at,

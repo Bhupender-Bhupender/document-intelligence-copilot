@@ -325,14 +325,38 @@ def build_quality_checks(
         ),
 
         QualityCheck(
-            name="block_order_positive",
+            name="block_order_nonnegative",
             entity="blocks",
             severity="CRITICAL",
             sql=f"""
             SELECT COUNT(*) AS violations
             FROM {blocks_table}
-            WHERE block_order < 1
+            WHERE block_order < 0
                OR block_order IS NULL
+            """,
+        ),
+
+        QualityCheck(
+            name="block_order_unique_per_page",
+            entity="blocks",
+            severity="CRITICAL",
+            sql=f"""
+            SELECT COUNT(*) AS violations
+            FROM (
+            SELECT
+            document_id,
+            page_number,
+            block_order
+
+            FROM {blocks_table}
+
+            GROUP BY
+            document_id,
+            page_number,
+            block_order
+
+            HAVING COUNT(*) > 1
+            )
             """,
         ),
 

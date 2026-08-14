@@ -163,6 +163,7 @@ class ParsedPage(BaseModel):
         "rapidocr",    # Docling-routed RapidOCR recovery (scanned/empty PDF pages)
         "paddleocr",   # PaddleOCR standalone path (deferred)
         "azure_di",    # Azure AI Document Intelligence prebuilt-read
+        "databricks_ai_parse_document"
     ] = "text_read"
     extraction_status: Literal["ok", "weak", "empty"] = "ok"
     ocr_confidence: Optional[float] = None

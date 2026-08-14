@@ -83,3 +83,32 @@ def test_layout_block_mapping_uses_reading_order():
 
     assert blocks[0]["block_order"] == 7
     assert blocks[0]["block_type"] == "paragraph"
+
+
+def test_empty_layout_block_is_skipped():
+
+    empty_block = FakeModel({
+        "block_id": "empty",
+        "block_type": "paragraph",
+        "reading_order": 0,
+        "section_title": None,
+        "text": "",
+    })
+
+    page = FakeModel({
+        "page_number": 1,
+        "word_count": 100,
+        "parse_method": "docling",
+        "normalized_text": "Page content",
+        "raw_text": "",
+        "section_title": None,
+        "layout_blocks": [empty_block],
+    })
+
+    pages, blocks = build_page_and_block_rows(
+        document_id="doc_test",
+        parsed_pages=[page],
+    )
+
+    assert len(pages) == 1
+    assert blocks == []

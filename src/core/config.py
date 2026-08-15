@@ -78,7 +78,13 @@ class AppConfig(BaseSettings):
     # ------------------------------------------------------------------ #
     # Model name settings                                                  #
     # ------------------------------------------------------------------ #
-
+    databricks_embedding_model: str = Field(
+    default="databricks-qwen3-embedding-0-6b",
+    description=(
+        "Databricks hosted embedding model used "
+        "for AI Search and managed vectorization."
+    ),
+    )
     embedding_model: str = Field(
         default="Qwen/Qwen3-Embedding-0.6B",
         description="HuggingFace model ID for embeddings (Phase 4+).",

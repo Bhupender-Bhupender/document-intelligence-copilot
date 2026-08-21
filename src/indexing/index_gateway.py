@@ -108,11 +108,30 @@ def route_index(
             "index_gateway_azure",
             chunk_count=len(parent_chunks) + len(child_chunks),
         )
-        return _run_azure_search_indexing(parent_chunks + child_chunks)
+        return _run_azure_search_indexing(
+            parent_chunks + child_chunks
+        )
 
-    logger.debug(
-        "index_gateway_local",
-        parent_count=len(parent_chunks),
-        child_count=len(child_chunks),
+    if config.search_backend == "databricks":
+        raise RuntimeError(
+            "Databricks AI Search indexing is managed through the "
+            "Gold Delta table and Delta Sync. "
+            "The application index gateway must not build a separate index."
+        )
+
+    if config.search_backend == "local":
+        logger.debug(
+            "index_gateway_local",
+            parent_count=len(parent_chunks),
+            child_count=len(child_chunks),
+        )
+        return _run_local_indexing(
+            parent_chunks,
+            child_chunks,
+            index_dir,
+            embed_model,
+        )
+
+    raise ValueError(
+        f"Unsupported search backend: {config.search_backend}"
     )
-    return _run_local_indexing(parent_chunks, child_chunks, index_dir, embed_model)

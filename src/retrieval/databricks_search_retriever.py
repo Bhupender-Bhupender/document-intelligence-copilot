@@ -9,14 +9,17 @@ No Databricks SDK type crosses this module boundary.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from src.schema.models import RetrievedChunk
+from src.schema.models import DocumentChunk, RetrievedChunk
 from src.utils.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
-
+ParentRowsLoader = Callable[
+    [Sequence[str]],
+    List[Dict[str, Any]],
+]
 
 class DatabricksSearchRetrievalError(Exception):
     """Raised when Databricks AI Search retrieval cannot be completed safely."""
@@ -48,14 +51,18 @@ class DatabricksSearchRetriever:
         self,
         index_name: str,
         endpoint_name: Optional[str] = None,
+        parent_table_name: Optional[str] = None,
         index: Optional[Any] = None,
+        parent_rows_loader: Optional[ParentRowsLoader] = None,
     ) -> None:
         if not index_name.strip():
             raise ValueError("index_name must not be blank")
 
         self.index_name = index_name
         self.endpoint_name = endpoint_name
+        self.parent_table_name = parent_table_name
         self._index = index
+        self._parent_rows_loader = parent_rows_loader
 
     def _get_index(self) -> Any:
         """
@@ -203,6 +210,171 @@ class DatabricksSearchRetriever:
             file_type=record.get("file_type") or None,
         )
 
+    @staticmethod
+    def _to_parent_chunk(
+        record: Dict[str, Any],
+        ) -> DocumentChunk:
+        """Convert one Gold parent row into the project-native model."""
+
+        if record.get("chunk_level") != "parent":
+            raise DatabricksSearchRetrievalError(
+                "Gold parent table returned a non-parent chunk."
+            )
+
+        if record.get("parent_chunk_id") not in (None, ""):
+            raise DatabricksSearchRetrievalError(
+                "A parent chunk unexpectedly contains a parent_chunk_id."
+            )
+
+        return DocumentChunk(
+            chunk_id=str(record["chunk_id"]),
+            doc_id=str(record["document_id"]),
+            page_id=str(record["page_id"]),
+            page_number=_to_integral_int(
+                record["page_number"],
+                field_name="page_number",
+            ),
+            file_name=str(record["file_name"]),
+            file_type=str(record["file_type"]),
+            section_title=record.get("section_title") or None,
+            text=str(record["text"] or ""),
+            word_count=_to_integral_int(
+                record["word_count"],
+                field_name="word_count",
+            ),
+            chunk_index=_to_nonnegative_integral_int(
+                record["chunk_index"],
+                field_name="chunk_index",
+            ),
+            chunk_level="parent",
+            parent_chunk_id=None,
+        )
+
+
+    def lookup_parents(
+        self,
+        retrieved: List[RetrievedChunk],
+    ) -> List[Optional[DocumentChunk]]:
+        """
+        Resolve parent context deterministically from the Gold parent table.
+
+        Output is aligned one-to-one with the input RetrievedChunk list.
+        Missing parent IDs or unresolved parents return None.
+        """
+        if not retrieved:
+            return []
+
+        requested_ids = [
+            item.parent_chunk_id
+            for item in retrieved
+            if item.parent_chunk_id
+        ]
+
+        if not requested_ids:
+            return [None] * len(retrieved)
+
+        # Preserve deterministic order while avoiding duplicate table lookups.
+        unique_ids = list(dict.fromkeys(requested_ids))
+
+        rows = self._load_parent_rows(unique_ids)
+
+        parent_by_id: Dict[str, DocumentChunk] = {}
+
+        for record in rows:
+            parent = self._to_parent_chunk(record)
+
+            if parent.chunk_id in parent_by_id:
+                raise DatabricksSearchRetrievalError(
+                    "Duplicate parent chunk returned from the Gold table."
+                )
+
+            parent_by_id[parent.chunk_id] = parent
+
+        results: List[Optional[DocumentChunk]] = []
+
+        for child in retrieved:
+            if not child.parent_chunk_id:
+                results.append(None)
+                continue
+
+            parent = parent_by_id.get(child.parent_chunk_id)
+
+            if parent is not None and parent.doc_id != child.doc_id:
+                raise DatabricksSearchRetrievalError(
+                    "Child-to-parent document lineage mismatch."
+                )
+
+            results.append(parent)
+
+        logger.debug(
+            "databricks_parent_lookup_complete",
+            requested=len(retrieved),
+            unique_parent_ids=len(unique_ids),
+            resolved=sum(parent is not None for parent in results),
+        )
+
+        return results
+
+    def _load_parent_rows(
+        self,
+        parent_ids: Sequence[str],
+        ) -> List[Dict[str, Any]]:
+        """
+        Load parent chunks from the Gold Delta table.
+
+        A custom loader can be injected for tests or alternate serving
+        runtimes. Otherwise an active Databricks Spark session is used.
+        """
+        if self._parent_rows_loader is not None:
+            return self._parent_rows_loader(parent_ids)
+
+        if not self.parent_table_name or not self.parent_table_name.strip():
+            raise DatabricksSearchRetrievalError(
+                "Databricks parent chunks table is not configured."
+            )
+
+        try:
+            from pyspark.sql import SparkSession, functions as F
+
+            spark = SparkSession.getActiveSession()
+
+            if spark is None:
+                raise DatabricksSearchRetrievalError(
+                    "No active Spark session is available for parent lookup."
+                )
+
+            rows = (
+                spark.table(self.parent_table_name)
+                .filter(F.col("chunk_id").isin(list(parent_ids)))
+                .select(
+                    "chunk_id",
+                    "document_id",
+                    "page_id",
+                    "page_number",
+                    "file_name",
+                    "file_type",
+                    "section_title",
+                    "text",
+                    "word_count",
+                    "chunk_index",
+                    "chunk_level",
+                    "parent_chunk_id",
+                )
+                .collect()
+            )
+
+            return [
+                row.asDict(recursive=False)
+                for row in rows
+            ]
+
+        except DatabricksSearchRetrievalError:
+            raise
+
+        except Exception as exc:
+            raise DatabricksSearchRetrievalError(
+                "Failed to load parent chunks from the configured Gold table."
+            ) from exc
 
 def _to_integral_int(value: Any, field_name: str) -> int:
     """
@@ -242,3 +414,26 @@ def _to_optional_float(value: Any) -> Optional[float]:
         raise DatabricksSearchRetrievalError(
             "AI Search score must be numeric."
         ) from exc
+
+def _to_nonnegative_integral_int(
+        value: Any,
+        field_name: str,
+    ) -> int:
+        if isinstance(value, bool) or value is None:
+            raise DatabricksSearchRetrievalError(
+                f"{field_name} must contain an integer value."
+            )
+
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise DatabricksSearchRetrievalError(
+                f"{field_name} must contain an integer value."
+            ) from exc
+
+        if not numeric.is_integer() or numeric < 0:
+            raise DatabricksSearchRetrievalError(
+                f"{field_name} must contain a nonnegative integral value."
+            )
+
+        return int(numeric)

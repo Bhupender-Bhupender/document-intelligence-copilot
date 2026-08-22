@@ -204,25 +204,30 @@ def test_retrieval_gateway_routes_databricks(monkeypatch):
         assert result is expected
 
 
-def test_databricks_parent_lookup_does_not_fall_back_local(
-        monkeypatch,
-    ):
-        from src.retrieval import retrieval_gateway
+def test_retrieval_gateway_routes_databricks_parent_lookup(
+    monkeypatch,
+):
+    from src.retrieval import retrieval_gateway
 
-        monkeypatch.setattr(
-            retrieval_gateway.config,
-            "search_backend",
-            "databricks",
-        )
+    expected = [MagicMock()]
 
-        with pytest.raises(
-            NotImplementedError,
-            match="Databricks parent lookup",
-        ):
-            retrieval_gateway.route_lookup_parents(
-                [MagicMock()]
-            )
+    monkeypatch.setattr(
+        retrieval_gateway.config,
+        "search_backend",
+        "databricks",
+    )
 
+    monkeypatch.setattr(
+        retrieval_gateway,
+        "_lookup_parents_databricks",
+        lambda retrieved: expected,
+    )
+
+    result = retrieval_gateway.route_lookup_parents(
+        [MagicMock()]
+    )
+
+    assert result is expected
 
 def test_databricks_index_gateway_does_not_build_local_index(
         monkeypatch,
@@ -260,3 +265,126 @@ def test_databricks_index_gateway_does_not_build_local_index(
             )
 
         assert local_called is False
+
+
+
+def _parent_rows(parent_ids):
+    all_rows = {
+        "parent-1": {
+            "chunk_id": "parent-1",
+            "document_id": "doc-1",
+            "page_id": "page-1",
+            "page_number": 1.0,
+            "file_name": "example.pdf",
+            "file_type": "pdf",
+            "section_title": "Section A",
+            "text": "parent text one",
+            "word_count": 100.0,
+            "chunk_index": 0.0,
+            "chunk_level": "parent",
+            "parent_chunk_id": None,
+        },
+        "parent-2": {
+            "chunk_id": "parent-2",
+            "document_id": "doc-2",
+            "page_id": "page-2",
+            "page_number": 2.0,
+            "file_name": "example.docx",
+            "file_type": "docx",
+            "section_title": None,
+            "text": "parent text two",
+            "word_count": 80.0,
+            "chunk_index": 1.0,
+            "chunk_level": "parent",
+            "parent_chunk_id": None,
+        },
+    }
+
+    return [
+        all_rows[parent_id]
+        for parent_id in parent_ids
+        if parent_id in all_rows
+    ]
+
+
+def test_lookup_parents_preserves_alignment():
+    retriever = DatabricksSearchRetriever(
+        index_name="catalog.schema.index",
+        parent_table_name="catalog.schema.parent_chunks",
+        parent_rows_loader=_parent_rows,
+    )
+
+    children = DatabricksSearchRetriever._parse_response(
+        _response()
+    )
+
+    parents = retriever.lookup_parents(children)
+
+    assert len(parents) == len(children)
+    assert parents[0] is not None
+    assert parents[1] is not None
+    assert parents[0].chunk_id == "parent-1"
+    assert parents[1].chunk_id == "parent-2"
+    assert parents[0].chunk_level == "parent"
+
+
+def test_lookup_parents_returns_none_when_parent_missing():
+    def loader(parent_ids):
+        return []
+
+    retriever = DatabricksSearchRetriever(
+        index_name="catalog.schema.index",
+        parent_rows_loader=loader,
+    )
+
+    children = DatabricksSearchRetriever._parse_response(
+        _response()
+    )
+
+    parents = retriever.lookup_parents(children)
+
+    assert parents == [None, None]
+
+
+def test_parent_document_lineage_mismatch_is_rejected():
+    def bad_loader(parent_ids):
+        rows = _parent_rows(parent_ids)
+        rows[0]["document_id"] = "wrong-document"
+        return rows
+
+    retriever = DatabricksSearchRetriever(
+        index_name="catalog.schema.index",
+        parent_rows_loader=bad_loader,
+    )
+
+    children = DatabricksSearchRetriever._parse_response(
+        _response()
+    )
+
+    with pytest.raises(
+        DatabricksSearchRetrievalError,
+        match="lineage mismatch",
+    ):
+        retriever.lookup_parents(children)
+
+
+def test_non_parent_row_is_rejected():
+    def bad_loader(parent_ids):
+        rows = _parent_rows(parent_ids)
+        rows[0]["chunk_level"] = "child"
+        return rows
+
+    retriever = DatabricksSearchRetriever(
+        index_name="catalog.schema.index",
+        parent_rows_loader=bad_loader,
+    )
+
+    children = DatabricksSearchRetriever._parse_response(
+        _response()
+    )
+
+    with pytest.raises(
+        DatabricksSearchRetrievalError,
+        match="non-parent",
+    ):
+        retriever.lookup_parents(children)

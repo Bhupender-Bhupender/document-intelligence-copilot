@@ -114,7 +114,23 @@ def _lookup_parents_azure(
     )
     return retriever.lookup_parents(retrieved)
 
+def _lookup_parents_databricks(
+    retrieved: List[RetrievedChunk],
+) -> List[Optional[DocumentChunk]]:
+    """Databricks Gold Delta parent-context lookup."""
+    from src.retrieval.databricks_search_retriever import (
+        DatabricksSearchRetriever,
+    )
 
+    retriever = DatabricksSearchRetriever(
+        endpoint_name=(
+            config.databricks_ai_search_endpoint_name or None
+        ),
+        index_name=config.databricks_ai_search_index_name,
+        parent_table_name=config.databricks_parent_chunks_table,
+    )
+
+    return retriever.lookup_parents(retrieved)
 # ---------------------------------------------------------------------------
 # Public gateway functions
 # ---------------------------------------------------------------------------
@@ -213,10 +229,11 @@ def route_lookup_parents(
         return _lookup_parents_azure(retrieved)
 
     if config.search_backend == "databricks":
-        raise NotImplementedError(
-            "Databricks parent lookup is not wired yet. "
-            "Parent chunks must be resolved from the Gold parent_chunks table."
+        logger.info(
+            "parent_lookup_gateway_databricks",
+            count=len(retrieved),
         )
+        return _lookup_parents_databricks(retrieved)
 
     if config.search_backend == "local":
         logger.debug(
@@ -231,3 +248,5 @@ def route_lookup_parents(
     raise ValueError(
         f"Unsupported search backend: {config.search_backend}"
     )
+
+

@@ -269,6 +269,15 @@ class AppConfig(BaseSettings):
             "Used when search_backend='databricks'."
         ),
     )
+
+    databricks_parent_chunks_table: str = Field(
+    default="",
+    description=(
+        "Fully qualified Gold parent-chunks Delta table. "
+        "Used for deterministic parent-context lookup when "
+        "search_backend='databricks'."
+        ),
+    )
 # Module-level singleton — import this instance in other modules.
 # Constructed once at import time using environment / .env file values.
 config = AppConfig()

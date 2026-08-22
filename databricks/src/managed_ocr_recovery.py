@@ -120,6 +120,73 @@ def parse_candidate_pages(
     return result
 
 
+_STANDARD_GOOD_WORD_THRESHOLD = 20
+_STRUCTURED_SPARSE_MIN_WORDS = 5
+_STRUCTURED_SPARSE_MIN_ELEMENTS = 2
+
+_STRUCTURED_SPARSE_ELEMENT_TYPES = {
+    "title",
+    "heading",
+    "section_header",
+    "table",
+    "list",
+    "caption",
+}
+
+
+def _is_structured_sparse_recovery(
+    *,
+    page_elements: list[dict[str, Any]],
+    managed_words: int,
+    native_words: int,
+) -> bool:
+    """
+    Return True when managed parsing provides credible evidence that a
+    low-text page is legitimately sparse rather than poorly extracted.
+
+    The normal >=20-word quality threshold remains unchanged.
+
+    Sparse managed output is accepted only when:
+    - it contains at least a small amount of text,
+    - it is not worse than the current extraction,
+    - multiple non-empty managed elements were recovered, and
+    - at least one element provides a structural signal.
+
+    Plain low-text pages without structure remain OCR_REQUIRED.
+    """
+    if managed_words < _STRUCTURED_SPARSE_MIN_WORDS:
+        return False
+
+    if managed_words >= _STANDARD_GOOD_WORD_THRESHOLD:
+        return False
+
+    if managed_words < native_words:
+        return False
+
+    nonempty_elements = [
+        element
+        for element in page_elements
+        if clean_managed_text(
+            element.get("content")
+        )
+    ]
+
+    if (
+        len(nonempty_elements)
+        < _STRUCTURED_SPARSE_MIN_ELEMENTS
+    ):
+        return False
+
+    return any(
+        str(
+            element.get("type")
+            or ""
+        ).strip().lower()
+        in _STRUCTURED_SPARSE_ELEMENT_TYPES
+        for element in nonempty_elements
+    )
+
+
 def build_managed_recovery_rows(
     *,
     document_id: str,
@@ -228,20 +295,41 @@ def build_managed_recovery_rows(
             )
         )
 
-        # Never replace native extraction with
-        # an equal or worse result.
-        if managed_words <= native_words:
+        structured_sparse = (
+            _is_structured_sparse_recovery(
+                page_elements=page_elements,
+                managed_words=managed_words,
+                native_words=native_words,
+            )
+        )
+
+        # Never replace an extraction with a worse
+        # managed result. Equal word count is accepted
+        # only when managed parsing provides stronger
+        # structural evidence for a legitimately sparse
+        # page.
+        if managed_words < native_words:
             continue
+
+        if (
+            managed_words == native_words
+            and not structured_sparse
+        ):
+            continue
+
+        is_good = (
+            managed_words
+            >= _STANDARD_GOOD_WORD_THRESHOLD
+            or structured_sparse
+        )
 
         quality = (
             "good"
-            if managed_words >= 20
+            if is_good
             else "weak"
         )
 
-        requires_ocr = (
-            managed_words < 20
-        )
+        requires_ocr = not is_good
 
         page_id_value = stable_page_id(
             document_id,

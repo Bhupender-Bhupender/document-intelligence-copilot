@@ -174,3 +174,38 @@ Phase 10 can be marked complete when:
 
 Phase 11 should build on the existing retrieval gateway rather than
 introducing another retrieval architecture.
+
+## Reusable retrieval-gateway validation
+
+After the retrieval-only evaluator was formalized, the same canonical
+dataset was rerun through the project retrieval gateway rather than
+calling the AI Search index directly.
+
+Results:
+
+| Metric | Result |
+| --- | ---: |
+| Cases | 21 |
+| Document Hit@1 | 21/21 — 100% |
+| Document Hit@3 | 21/21 — 100% |
+| Document Hit@5 | 21/21 — 100% |
+| Document Hit@10 | 21/21 — 100% |
+| Zero results | 0 |
+| Retrieval errors | 0 |
+| Metadata-valid rate | 100% |
+| Mean latency | 1110.98 ms |
+| Median latency | 947.85 ms |
+| P95 latency | 1198.41 ms |
+| Generation used | No |
+| LLM judge used | No |
+| Operational retrieval pass | Yes |
+
+The retrieval-quality result exactly reproduced the earlier direct
+AI Search benchmark.
+
+Latency was higher through the reusable application path than in the
+earlier direct-index notebook benchmark (308.39 ms mean and 695.32 ms
+p95). This is recorded as a performance-engineering follow-up rather
+than optimized during Phase 10. The retrieval adapter/gateway path
+should be profiled before attributing the difference to any specific
+component.

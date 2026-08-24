@@ -432,3 +432,58 @@ def test_retrieve_forwards_metadata_filters():
         ]
         == "hybrid"
     )
+
+
+
+def test_parse_response_accepts_zero_result_without_data_array():
+    response = {
+        "result": {
+            "row_count": 0,
+        }
+    }
+
+    results = (
+        DatabricksSearchRetriever
+        ._parse_response(response)
+    )
+
+    assert results == []
+
+
+def test_parse_response_accepts_zero_result_with_empty_data_array():
+    response = {
+        "manifest": {
+            "columns": [],
+        },
+        "result": {
+            "row_count": 0,
+            "data_array": [],
+        },
+    }
+
+    results = (
+        DatabricksSearchRetriever
+        ._parse_response(response)
+    )
+
+    assert results == []
+
+
+def test_parse_response_rejects_inconsistent_zero_result():
+    response = {
+        "result": {
+            "row_count": 0,
+            "data_array": [
+                ["unexpected-row"]
+            ],
+        }
+    }
+
+    with pytest.raises(
+        DatabricksSearchRetrievalError,
+        match="inconsistent zero-result",
+    ):
+        (
+            DatabricksSearchRetriever
+            ._parse_response(response)
+        )

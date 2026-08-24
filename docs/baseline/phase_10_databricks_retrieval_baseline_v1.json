@@ -1,0 +1,54 @@
+﻿{
+  "benchmark_version": "phase10_databricks_retrieval_v1",
+  "observed_date": "2026-08-23",
+  "backend": "databricks_ai_search_hybrid",
+  "evaluation_scope": {
+    "active_cases": 21,
+    "unique_target_documents": 4,
+    "gold_child_chunks": 329,
+    "indexed_child_chunks": 329,
+    "top_k": 10
+  },
+  "retrieval_quality": {
+    "document_hit_at_1_count": 21,
+    "document_hit_at_1": 1.0,
+    "document_hit_at_3_count": 21,
+    "document_hit_at_3": 1.0,
+    "document_hit_at_5_count": 21,
+    "document_hit_at_5": 1.0,
+    "document_hit_at_10_count": 21,
+    "document_hit_at_10": 1.0
+  },
+  "operational_quality": {
+    "zero_result_count": 0,
+    "zero_result_rate": 0.0,
+    "retrieval_error_count": 0,
+    "retrieval_error_rate": 0.0,
+    "metadata_valid_cases": 21,
+    "metadata_valid_rate": 1.0
+  },
+  "latency_ms": {
+    "mean": 308.39,
+    "median": 241.03,
+    "p95": 695.32
+  },
+  "index_state": {
+    "ready": true,
+    "state": "ONLINE_NO_PENDING_UPDATE",
+    "row_count_reconciled": true,
+    "change_data_feed_enabled": true,
+    "deleted_file_retention_days": 30,
+    "log_retention_days": 30
+  },
+  "evaluation_constraints": {
+    "page_hit_scoring": "NOT_AVAILABLE_NO_PAGE_LABELS",
+    "generation_used": false,
+    "llm_judge_used": false
+  },
+  "limitations": [
+    "The canonical benchmark contains 21 active cases across 4 target documents.",
+    "The result measures document-level Hit@K over ranked child chunks.",
+    "The result should not be interpreted as universal retrieval accuracy.",
+    "Page-level Hit@K is not scored because the canonical dataset has no expected page labels."
+  ]
+}

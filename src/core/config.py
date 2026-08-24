@@ -228,12 +228,14 @@ class AppConfig(BaseSettings):
     # Search backend                                                        #
     # ------------------------------------------------------------------ #
 
-    search_backend: Literal["local", "azure_search"] = Field(
+    search_backend: Literal["local", "azure_search", "databricks"] = Field(
         default="local",
         description=(
-            "Search backend for indexing and retrieval. "
+            "Search backend for indexing/retrieval. "
             "'local' uses LlamaIndex/BM25 hybrid; "
-            "'azure_search' uses Azure AI Search."
+            "'azure_search' uses Azure AI Search; "
+            "'databricks' uses Databricks AI Search for retrieval "
+            "with Delta Sync managing the search index."
         ),
     )
     azure_search_endpoint: str = Field(
@@ -252,7 +254,30 @@ class AppConfig(BaseSettings):
         ),
     )
 
+    databricks_ai_search_endpoint_name: str = Field(
+        default="",
+        description=(
+            "Databricks AI Search serving endpoint name. "
+            "Used when search_backend='databricks'."
+        ),
+    )
 
+    databricks_ai_search_index_name: str = Field(
+        default="",
+        description=(
+            "Fully qualified Unity Catalog Databricks AI Search index name. "
+            "Used when search_backend='databricks'."
+        ),
+    )
+
+    databricks_parent_chunks_table: str = Field(
+    default="",
+    description=(
+        "Fully qualified Gold parent-chunks Delta table. "
+        "Used for deterministic parent-context lookup when "
+        "search_backend='databricks'."
+        ),
+    )
 # Module-level singleton — import this instance in other modules.
 # Constructed once at import time using environment / .env file values.
 config = AppConfig()

@@ -70,7 +70,26 @@ def _retrieve_azure(query: str, top_k: int) -> List[RetrievedChunk]:
     )
     return retriever.retrieve(query, top_k=top_k)
 
+def _retrieve_databricks(
+    query: str,
+    top_k: int,
+) -> List[RetrievedChunk]:
+    """Databricks AI Search hybrid child-chunk retrieval."""
+    from src.retrieval.databricks_search_retriever import (
+        DatabricksSearchRetriever,
+    )
 
+    retriever = DatabricksSearchRetriever(
+        endpoint_name=(
+            config.databricks_ai_search_endpoint_name or None
+        ),
+        index_name=config.databricks_ai_search_index_name,
+    )
+
+    return retriever.retrieve(
+        query,
+        top_k=top_k,
+    )
 # ---------------------------------------------------------------------------
 # Parent lookup wrappers
 # ---------------------------------------------------------------------------
@@ -95,7 +114,23 @@ def _lookup_parents_azure(
     )
     return retriever.lookup_parents(retrieved)
 
+def _lookup_parents_databricks(
+    retrieved: List[RetrievedChunk],
+) -> List[Optional[DocumentChunk]]:
+    """Databricks Gold Delta parent-context lookup."""
+    from src.retrieval.databricks_search_retriever import (
+        DatabricksSearchRetriever,
+    )
 
+    retriever = DatabricksSearchRetriever(
+        endpoint_name=(
+            config.databricks_ai_search_endpoint_name or None
+        ),
+        index_name=config.databricks_ai_search_index_name,
+        parent_table_name=config.databricks_parent_chunks_table,
+    )
+
+    return retriever.lookup_parents(retrieved)
 # ---------------------------------------------------------------------------
 # Public gateway functions
 # ---------------------------------------------------------------------------
@@ -125,11 +160,39 @@ def route_retrieve(
         List[RetrievedChunk]
     """
     if config.search_backend == "azure_search":
-        logger.info("retrieval_gateway_azure", query_chars=len(query), top_k=top_k)
+        logger.info(
+            "retrieval_gateway_azure",
+            query_chars=len(query),
+            top_k=top_k,
+        )
         return _retrieve_azure(query, top_k=top_k)
 
-    logger.debug("retrieval_gateway_local", query_chars=len(query), top_k=top_k)
-    return _retrieve_local(query, index_dir=index_dir, top_k=top_k)
+    if config.search_backend == "databricks":
+        logger.info(
+            "retrieval_gateway_databricks",
+            query_chars=len(query),
+            top_k=top_k,
+        )
+        return _retrieve_databricks(
+            query,
+            top_k=top_k,
+        )
+
+    if config.search_backend == "local":
+        logger.debug(
+            "retrieval_gateway_local",
+            query_chars=len(query),
+            top_k=top_k,
+        )
+        return _retrieve_local(
+            query,
+            index_dir=index_dir,
+            top_k=top_k,
+        )
+
+    raise ValueError(
+        f"Unsupported search backend: {config.search_backend}"
+    )
 
 
 def route_lookup_parents(
@@ -159,8 +222,31 @@ def route_lookup_parents(
         List[Optional[DocumentChunk]] aligned to the input list.
     """
     if config.search_backend == "azure_search":
-        logger.info("parent_lookup_gateway_azure", count=len(retrieved))
+        logger.info(
+            "parent_lookup_gateway_azure",
+            count=len(retrieved),
+        )
         return _lookup_parents_azure(retrieved)
 
-    logger.debug("parent_lookup_gateway_local", count=len(retrieved))
-    return _lookup_parents_local(retrieved, index_dir=index_dir)
+    if config.search_backend == "databricks":
+        logger.info(
+            "parent_lookup_gateway_databricks",
+            count=len(retrieved),
+        )
+        return _lookup_parents_databricks(retrieved)
+
+    if config.search_backend == "local":
+        logger.debug(
+            "parent_lookup_gateway_local",
+            count=len(retrieved),
+        )
+        return _lookup_parents_local(
+            retrieved,
+            index_dir=index_dir,
+        )
+
+    raise ValueError(
+        f"Unsupported search backend: {config.search_backend}"
+    )
+
+

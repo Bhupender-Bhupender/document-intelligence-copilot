@@ -98,6 +98,7 @@ class DatabricksSearchRetriever:
         self,
         query: str,
         top_k: int = 10,
+        filters: Optional[dict] = None,
     ) -> List[RetrievedChunk]:
         """Run Databricks hybrid retrieval and return project-native chunks."""
         if not query or not query.strip():
@@ -109,11 +110,18 @@ class DatabricksSearchRetriever:
         index = self._get_index()
 
         try:
-            response = index.similarity_search(
-                query_text=query,
-                columns=self.RESULT_COLUMNS,
-                num_results=top_k,
-                query_type="hybrid",
+            search_kwargs = {
+                "query_text": query,
+                "columns": self.RESULT_COLUMNS,
+                "num_results": top_k,
+                "query_type": "hybrid",
+            }
+
+            if filters:
+                search_kwargs["filters"] = filters
+
+            response = self._index.similarity_search(
+                **search_kwargs
             )
         except Exception as exc:
             # Do not include query text in logs or exception messages.
@@ -137,40 +145,115 @@ class DatabricksSearchRetriever:
         cls,
         response: Dict[str, Any],
     ) -> List[RetrievedChunk]:
-        """Normalize the AI Search manifest/data_array response."""
+        """
+        Normalize the Databricks AI Search
+        manifest/data_array response.
+
+        A successful query with zero matching
+        rows is a normal retrieval outcome and
+        returns an empty list.
+
+        Non-empty responses retain strict
+        manifest, schema, row-width, and chunk
+        validation.
+        """
+
+        if not isinstance(response, dict):
+            raise DatabricksSearchRetrievalError(
+                "Databricks AI Search returned an "
+                "invalid response structure."
+            )
+
+        result = response.get("result")
+
+        if not isinstance(result, dict):
+            raise DatabricksSearchRetrievalError(
+                "Databricks AI Search returned an "
+                "invalid response structure."
+            )
+
+        row_count = result.get("row_count")
+
+        if row_count == 0:
+            rows = result.get("data_array")
+
+            if rows not in (None, []):
+                raise DatabricksSearchRetrievalError(
+                    "Databricks AI Search returned "
+                    "inconsistent zero-result data."
+                )
+
+            return []
+
         try:
             manifest = response["manifest"]
-            result = response["result"]
             columns = manifest["columns"]
             rows = result["data_array"]
         except (KeyError, TypeError) as exc:
             raise DatabricksSearchRetrievalError(
-                "Databricks AI Search returned an invalid response structure."
+                "Databricks AI Search returned an "
+                "invalid response structure."
             ) from exc
 
-        column_names = [
-            column["name"]
-            for column in columns
-        ]
+        if not isinstance(columns, list):
+            raise DatabricksSearchRetrievalError(
+                "Databricks AI Search returned an "
+                "invalid response structure."
+            )
 
-        missing = cls.REQUIRED_RESPONSE_COLUMNS - set(column_names)
+        if not isinstance(rows, list):
+            raise DatabricksSearchRetrievalError(
+                "Databricks AI Search returned an "
+                "invalid response structure."
+            )
+
+        try:
+            column_names = [
+                column["name"]
+                for column in columns
+            ]
+        except (KeyError, TypeError) as exc:
+            raise DatabricksSearchRetrievalError(
+                "Databricks AI Search returned an "
+                "invalid response structure."
+            ) from exc
+
+        missing = (
+            cls.REQUIRED_RESPONSE_COLUMNS
+            - set(column_names)
+        )
 
         if missing:
             raise DatabricksSearchRetrievalError(
-                "Databricks AI Search response is missing required columns: "
+                "Databricks AI Search response is "
+                "missing required columns: "
                 + ", ".join(sorted(missing))
             )
 
         results: List[RetrievedChunk] = []
 
         for row in rows:
-            if len(row) != len(column_names):
+            if (
+                not isinstance(row, (list, tuple))
+                or len(row) != len(column_names)
+            ):
                 raise DatabricksSearchRetrievalError(
-                    "Databricks AI Search row width does not match manifest."
+                    "Databricks AI Search row "
+                    "width does not match manifest."
                 )
 
-            record = dict(zip(column_names, row))
-            results.append(cls._to_retrieved_chunk(record))
+            record = dict(
+                zip(
+                    column_names,
+                    row,
+                )
+            )
+
+            results.append(
+                cls._to_retrieved_chunk(
+                    record
+                )
+            )
 
         return results
 

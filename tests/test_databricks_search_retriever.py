@@ -388,3 +388,102 @@ def test_non_parent_row_is_rejected():
         match="non-parent",
     ):
         retriever.lookup_parents(children)
+
+
+def test_retrieve_forwards_metadata_filters():
+    fake_index = FakeIndex(
+        response=_response()
+    )
+
+    retriever = DatabricksSearchRetriever(
+        index_name=(
+            "catalog.schema."
+            "child_chunks_index"
+        ),
+        index=fake_index,
+    )
+
+    filters = {
+        "document_id": [
+            "doc-1"
+        ]
+    }
+
+    retriever.retrieve(
+        "compliance responsibilities",
+        top_k=2,
+        filters=filters,
+    )
+
+    assert len(
+        fake_index.calls
+    ) == 1
+
+    assert (
+        fake_index.calls[0][
+            "filters"
+        ]
+        == filters
+    )
+
+    assert (
+        fake_index.calls[0][
+            "query_type"
+        ]
+        == "hybrid"
+    )
+
+
+
+def test_parse_response_accepts_zero_result_without_data_array():
+    response = {
+        "result": {
+            "row_count": 0,
+        }
+    }
+
+    results = (
+        DatabricksSearchRetriever
+        ._parse_response(response)
+    )
+
+    assert results == []
+
+
+def test_parse_response_accepts_zero_result_with_empty_data_array():
+    response = {
+        "manifest": {
+            "columns": [],
+        },
+        "result": {
+            "row_count": 0,
+            "data_array": [],
+        },
+    }
+
+    results = (
+        DatabricksSearchRetriever
+        ._parse_response(response)
+    )
+
+    assert results == []
+
+
+def test_parse_response_rejects_inconsistent_zero_result():
+    response = {
+        "result": {
+            "row_count": 0,
+            "data_array": [
+                ["unexpected-row"]
+            ],
+        }
+    }
+
+    with pytest.raises(
+        DatabricksSearchRetrievalError,
+        match="inconsistent zero-result",
+    ):
+        (
+            DatabricksSearchRetriever
+            ._parse_response(response)
+        )

@@ -1,0 +1,50 @@
+﻿{
+  "phase": 11,
+  "name": "Retrieval Service",
+  "status": "PASS",
+  "evidence_version": "phase_11_retrieval_service_v1",
+  "validation_date": "2026-08-24",
+  "local_validation": {
+    "targeted_tests_passed": 33,
+    "full_tests_passed": 807,
+    "skipped": 24,
+    "failures": 0,
+    "warnings": 3
+  },
+  "live_databricks_validation": {
+    "allowed_result_count": 3,
+    "allowed_document_only": true,
+    "citations_aligned": true,
+    "parent_context_present": true,
+    "filter_recorded": true,
+    "blocked_result_count": 0,
+    "no_unauthorized_leakage": true,
+    "stable_response": true,
+    "live_pass": true
+  },
+  "implemented_capabilities": [
+    "stable retrieval request contract",
+    "stable retrieval response contract",
+    "Databricks hybrid retrieval through existing gateway",
+    "document allow-list filter pushdown",
+    "defense-in-depth allow-list validation",
+    "final_k evidence selection",
+    "optional parent-context expansion",
+    "child-level citation anchors",
+    "parent-child lineage validation",
+    "valid zero-result handling"
+  ],
+  "unsupported_filters_fail_closed": [
+    "tenant_id",
+    "allowed_groups",
+    "date_range"
+  ],
+  "known_limitations": [
+    "tenant metadata not yet present in Gold retrieval corpus",
+    "access-group metadata not yet present in Gold retrieval corpus",
+    "document-version/current-state metadata not yet available for retrieval filtering",
+    "explicit semantic index version is not queried per request",
+    "performance optimization deferred to later performance phase"
+  ],
+  "private_content_recorded": false
+}

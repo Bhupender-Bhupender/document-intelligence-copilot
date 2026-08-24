@@ -21,7 +21,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root resolved relative to this file's location:
-#   src/core/config.py → parent → src/core → parent → src → parent → project root
+#   src/core/config.py â†’ parent â†’ src/core â†’ parent â†’ src â†’ parent â†’ project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -68,7 +68,7 @@ class AppConfig(BaseSettings):
         default=_PROJECT_ROOT / "data" / "processed" / "manifests",
         description="Output directory for pipeline run manifests.",
     )
-    # Legacy ChromaDB path — kept for non-destructive reference only.
+    # Legacy ChromaDB path â€” kept for non-destructive reference only.
     # The new pipeline does not write to this location.
     legacy_chroma_dir: Path = Field(
         default=_PROJECT_ROOT / "data" / "chroma_db",
@@ -123,7 +123,7 @@ class AppConfig(BaseSettings):
         description="Word overlap between consecutive flat chunks.",
     )
 
-    # Hierarchical chunking — parent/child windows for hybrid RAG.
+    # Hierarchical chunking â€” parent/child windows for hybrid RAG.
     # Parents provide broad synthesis context; children are the retrieval units.
     parent_chunk_size_words: int = Field(
         default=400,
@@ -278,6 +278,13 @@ class AppConfig(BaseSettings):
         "search_backend='databricks'."
         ),
     )
-# Module-level singleton — import this instance in other modules.
+    databricks_sql_warehouse_id: str = Field(
+        default="",
+        description=(
+            "Databricks SQL warehouse ID used for remote "
+            "parent-chunk lookup when no active Spark session is available."
+        ),
+    )
+# Module-level singleton â€” import this instance in other modules.
 # Constructed once at import time using environment / .env file values.
 config = AppConfig()

@@ -98,6 +98,7 @@ class DatabricksSearchRetriever:
         self,
         query: str,
         top_k: int = 10,
+        filters: Optional[dict] = None,
     ) -> List[RetrievedChunk]:
         """Run Databricks hybrid retrieval and return project-native chunks."""
         if not query or not query.strip():
@@ -109,11 +110,18 @@ class DatabricksSearchRetriever:
         index = self._get_index()
 
         try:
-            response = index.similarity_search(
-                query_text=query,
-                columns=self.RESULT_COLUMNS,
-                num_results=top_k,
-                query_type="hybrid",
+            search_kwargs = {
+                "query_text": query,
+                "columns": self.RESULT_COLUMNS,
+                "num_results": top_k,
+                "query_type": "hybrid",
+            }
+
+            if filters:
+                search_kwargs["filters"] = filters
+
+            response = self._index.similarity_search(
+                **search_kwargs
             )
         except Exception as exc:
             # Do not include query text in logs or exception messages.

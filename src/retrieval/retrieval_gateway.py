@@ -73,6 +73,7 @@ def _retrieve_azure(query: str, top_k: int) -> List[RetrievedChunk]:
 def _retrieve_databricks(
     query: str,
     top_k: int,
+    filters: Optional[dict] = None,
 ) -> List[RetrievedChunk]:
     """Databricks AI Search hybrid child-chunk retrieval."""
     from src.retrieval.databricks_search_retriever import (
@@ -89,6 +90,7 @@ def _retrieve_databricks(
     return retriever.retrieve(
         query,
         top_k=top_k,
+        filters=filters,
     )
 # ---------------------------------------------------------------------------
 # Parent lookup wrappers
@@ -140,41 +142,78 @@ def route_retrieve(
     query: str,
     index_dir: Optional[Path] = None,
     top_k: int = 10,
+    filters: Optional[dict] = None,
 ) -> List[RetrievedChunk]:
     """
     Route a retrieval query to the configured backend.
 
-    Azure path (``search_backend='azure_search'``):
-        Returns child-level RetrievedChunks from Azure AI Search BM25.
-        ``index_dir`` is unused.
-
-    Local path (``search_backend='local'``, default):
-        Returns RetrievedChunks from the LlamaIndex/BM25 hybrid retriever.
+    Metadata filters are currently supported
+    only by the Databricks retrieval backend.
 
     Args:
-        query:     Natural language query string.
-        index_dir: Local index directory (local path only).
-        top_k:     Maximum number of results to return.
+        query:
+            Natural-language retrieval query.
+
+        index_dir:
+            Local index path. Used only by the
+            local retrieval backend.
+
+        top_k:
+            Maximum number of results.
+
+        filters:
+            Optional backend metadata filters.
+            Currently supported only for
+            Databricks AI Search.
 
     Returns:
         List[RetrievedChunk]
     """
+
+    if (
+        filters
+        and config.search_backend
+        != "databricks"
+    ):
+        raise ValueError(
+            "Metadata filters are currently "
+            "supported only by the Databricks "
+            "retrieval backend."
+        )
+
     if config.search_backend == "azure_search":
         logger.info(
             "retrieval_gateway_azure",
             query_chars=len(query),
             top_k=top_k,
         )
-        return _retrieve_azure(query, top_k=top_k)
+
+        return _retrieve_azure(
+            query,
+            top_k=top_k,
+        )
 
     if config.search_backend == "databricks":
         logger.info(
             "retrieval_gateway_databricks",
             query_chars=len(query),
             top_k=top_k,
+            filtered=bool(filters),
         )
+
+        # Preserve the historical internal
+        # call contract when no filters exist.
+        # This also keeps older test doubles
+        # and callers compatible.
+        if filters:
+            return _retrieve_databricks(
+                query=query,
+                top_k=top_k,
+                filters=filters,
+            )
+
         return _retrieve_databricks(
-            query,
+            query=query,
             top_k=top_k,
         )
 
@@ -184,6 +223,7 @@ def route_retrieve(
             query_chars=len(query),
             top_k=top_k,
         )
+
         return _retrieve_local(
             query,
             index_dir=index_dir,
@@ -191,7 +231,8 @@ def route_retrieve(
         )
 
     raise ValueError(
-        f"Unsupported search backend: {config.search_backend}"
+        "Unsupported search backend: "
+        f"{config.search_backend}"
     )
 
 

@@ -388,3 +388,47 @@ def test_non_parent_row_is_rejected():
         match="non-parent",
     ):
         retriever.lookup_parents(children)
+
+
+def test_retrieve_forwards_metadata_filters():
+    fake_index = FakeIndex(
+        response=_response()
+    )
+
+    retriever = DatabricksSearchRetriever(
+        index_name=(
+            "catalog.schema."
+            "child_chunks_index"
+        ),
+        index=fake_index,
+    )
+
+    filters = {
+        "document_id": [
+            "doc-1"
+        ]
+    }
+
+    retriever.retrieve(
+        "compliance responsibilities",
+        top_k=2,
+        filters=filters,
+    )
+
+    assert len(
+        fake_index.calls
+    ) == 1
+
+    assert (
+        fake_index.calls[0][
+            "filters"
+        ]
+        == filters
+    )
+
+    assert (
+        fake_index.calls[0][
+            "query_type"
+        ]
+        == "hybrid"
+    )

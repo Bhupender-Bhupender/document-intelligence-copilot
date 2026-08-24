@@ -150,3 +150,79 @@ def test_duplicate_case_ids_are_rejected(
             canonical,
             manifest,
         )
+
+
+def test_identical_duplicate_manifest_mapping_is_allowed(
+    tmp_path,
+):
+    canonical = (
+        tmp_path / "cases.jsonl"
+    )
+
+    manifest = (
+        tmp_path / "manifest.csv"
+    )
+
+    _write_cases(
+        canonical
+    )
+
+    sha = "a" * 64
+
+    manifest.write_text(
+        (
+            "document_id,sha256\n"
+            f"baseline-doc,{sha}\n"
+            f"baseline-doc,{sha}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    examples = (
+        load_databricks_retrieval_examples(
+            canonical,
+            manifest,
+        )
+    )
+
+    assert len(examples) == 1
+
+    assert (
+        examples[0]
+        .expected_document_id
+        == "doc_" + ("a" * 16)
+    )
+
+
+def test_conflicting_duplicate_manifest_mapping_is_rejected(
+    tmp_path,
+):
+    canonical = (
+        tmp_path / "cases.jsonl"
+    )
+
+    manifest = (
+        tmp_path / "manifest.csv"
+    )
+
+    _write_cases(
+        canonical
+    )
+
+    manifest.write_text(
+        (
+            "document_id,sha256\n"
+            f"baseline-doc,{'a' * 64}\n"
+            f"baseline-doc,{'b' * 64}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Conflicting SHA-256",
+    ):
+        load_databricks_retrieval_examples(
+            canonical,
+            manifest,
+        )

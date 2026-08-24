@@ -96,14 +96,39 @@ def load_databricks_retrieval_examples(
                 "an empty document_id."
             )
 
-        if (
-            document_id
-            in manifest_by_document
-        ):
-            raise ValueError(
-                "Duplicate document_id "
-                "in corpus manifest."
+        existing_row = (
+            manifest_by_document.get(
+                document_id
             )
+        )
+
+        if existing_row is not None:
+
+            existing_sha = str(
+                existing_row.get("sha256")
+                or ""
+            ).lower()
+
+            current_sha = str(
+                row.get("sha256")
+                or ""
+            ).lower()
+
+            # Repeated identical identity mappings
+            # are harmless and can arise from
+            # historical baseline inventory rows.
+            #
+            # A document_id pointing to two
+            # different hashes is a real identity
+            # conflict and must never be hidden.
+            if existing_sha != current_sha:
+                raise ValueError(
+                    "Conflicting SHA-256 values "
+                    "for duplicate document_id "
+                    "in corpus manifest."
+                )
+
+            continue
 
         manifest_by_document[
             document_id

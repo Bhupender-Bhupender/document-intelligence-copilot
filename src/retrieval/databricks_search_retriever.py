@@ -88,6 +88,57 @@ def _create_ai_search_client(
     return client_cls()
 
 
+def _safe_error_metadata(
+    exc: Exception,
+) -> dict:
+    """
+    Extract non-sensitive provider failure metadata.
+
+    Never includes exception messages, URLs, request payloads,
+    queries, credentials, document identifiers, or response bodies.
+    """
+    status_code = getattr(
+        exc,
+        "status_code",
+        None,
+    )
+
+    if status_code is None:
+        response = getattr(
+            exc,
+            "response",
+            None,
+        )
+
+        status_code = getattr(
+            response,
+            "status_code",
+            None,
+        )
+
+    error_code = getattr(
+        exc,
+        "error_code",
+        None,
+    )
+
+    return {
+        "cause_type":
+            type(exc).__name__,
+
+        "status_code":
+            status_code,
+
+        "error_code":
+            (
+                str(error_code)
+                if error_code is not None
+                else None
+            ),
+    }
+
+
+
 class DatabricksSearchRetriever:
     """Hybrid child-chunk retriever backed by Databricks AI Search."""
 
@@ -155,6 +206,11 @@ class DatabricksSearchRetriever:
             return self._index
 
         except Exception as exc:
+            logger.warning(
+                "databricks_ai_search_index_connect_failed",
+                **_safe_error_metadata(exc),
+            )
+
             raise DatabricksSearchRetrievalError(
                 "Unable to connect to the configured Databricks AI Search index."
             ) from exc
@@ -189,7 +245,13 @@ class DatabricksSearchRetriever:
                 **search_kwargs
             )
         except Exception as exc:
-            # Do not include query text in logs or exception messages.
+            # Do not include query text, filters, document identifiers,
+            # response bodies, or credentials in logs.
+            logger.warning(
+                "databricks_ai_search_query_failed",
+                **_safe_error_metadata(exc),
+            )
+
             raise DatabricksSearchRetrievalError(
                 "Databricks AI Search hybrid retrieval failed."
             ) from exc

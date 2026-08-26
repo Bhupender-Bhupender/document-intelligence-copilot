@@ -37,11 +37,23 @@ def test_databricks_backend_routes_to_injected_generator(monkeypatch):
     assert result == "databricks-result"
 
 
-def test_databricks_backend_requires_adapter(monkeypatch):
-    monkeypatch.setattr(config, "generation_backend", "databricks")
+def test_databricks_backend_requires_configuration(monkeypatch):
+    monkeypatch.setattr(
+        config,
+        "generation_backend",
+        "databricks",
+    )
+    monkeypatch.setattr(
+        config,
+        "databricks_generation_model",
+        "",
+    )
 
-    with pytest.raises(GenerationBackendError):
+    with pytest.raises(
+        GenerationBackendError,
+        match="not configured",
+    ):
         generate(
             [{"role": "user", "content": "test"}],
-            "test-model",
+            None,
         )

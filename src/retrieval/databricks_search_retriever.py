@@ -77,7 +77,27 @@ class DatabricksSearchRetriever:
         try:
             from databricks.ai_search.client import AISearchClient
 
-            client = AISearchClient()
+            import os
+
+            workspace_url = os.getenv(
+                "DATABRICKS_HOST",
+                "",
+            ).strip()
+
+            access_token = os.getenv(
+                "DATABRICKS_TOKEN",
+                "",
+            ).strip()
+
+            if workspace_url and access_token:
+                client = AISearchClient(
+                    workspace_url=workspace_url,
+                    personal_access_token=access_token,
+                    disable_notice=True,
+                )
+            else:
+                # Databricks notebook/runtime authentication.
+                client = AISearchClient()
 
             get_index_kwargs = {
                 "index_name": self.index_name,
@@ -401,34 +421,67 @@ class DatabricksSearchRetriever:
     def _load_parent_rows(
         self,
         parent_ids: Sequence[str],
-        ) -> List[Dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """
         Load parent chunks from the Gold Delta table.
 
         A custom loader can be injected for tests or alternate serving
-        runtimes. Otherwise an active Databricks Spark session is used.
+        runtimes.
+
+        Inside Databricks, an active Spark session is preferred.
+        Outside Databricks, parent rows are loaded through the
+        Databricks SQL Statement Execution API.
         """
         if self._parent_rows_loader is not None:
             return self._parent_rows_loader(parent_ids)
 
-        if not self.parent_table_name or not self.parent_table_name.strip():
+        if (
+            not self.parent_table_name
+            or not self.parent_table_name.strip()
+        ):
             raise DatabricksSearchRetrievalError(
                 "Databricks parent chunks table is not configured."
             )
 
         try:
-            from pyspark.sql import SparkSession, functions as F
+            spark = None
+            F = None
 
-            spark = SparkSession.getActiveSession()
+            try:
+                from pyspark.sql import (
+                    SparkSession,
+                    functions as spark_functions,
+                )
+
+                spark = SparkSession.getActiveSession()
+                F = spark_functions
+
+            except ImportError:
+                # Local serving/runtime environments do not
+                # need PySpark merely to retrieve parent rows.
+                spark = None
 
             if spark is None:
-                raise DatabricksSearchRetrievalError(
-                    "No active Spark session is available for parent lookup."
+                from src.core.config import config
+                from src.retrieval.databricks_parent_rows import (
+                    load_parent_rows_via_statement_api,
+                )
+
+                return load_parent_rows_via_statement_api(
+                    list(parent_ids),
+                    parent_table_name=self.parent_table_name,
+                    warehouse_id=(
+                        config.databricks_sql_warehouse_id
+                    ),
                 )
 
             rows = (
                 spark.table(self.parent_table_name)
-                .filter(F.col("chunk_id").isin(list(parent_ids)))
+                .filter(
+                    F.col("chunk_id").isin(
+                        list(parent_ids)
+                    )
+                )
                 .select(
                     "chunk_id",
                     "document_id",
@@ -456,7 +509,8 @@ class DatabricksSearchRetriever:
 
         except Exception as exc:
             raise DatabricksSearchRetrievalError(
-                "Failed to load parent chunks from the configured Gold table."
+                "Failed to load parent chunks from "
+                "the configured Gold table."
             ) from exc
 
 def _to_integral_int(value: Any, field_name: str) -> int:

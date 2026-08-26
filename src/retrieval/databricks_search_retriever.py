@@ -9,6 +9,7 @@ No Databricks SDK type crosses this module boundary.
 
 from __future__ import annotations
 
+import os
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from src.schema.models import DocumentChunk, RetrievedChunk
@@ -23,6 +24,68 @@ ParentRowsLoader = Callable[
 
 class DatabricksSearchRetrievalError(Exception):
     """Raised when Databricks AI Search retrieval cannot be completed safely."""
+
+
+def _create_ai_search_client(
+    client_cls: Any,
+) -> Any:
+    """
+    Create an AI Search client using the appropriate runtime identity.
+
+    Authentication precedence:
+
+    1. Databricks App service principal.
+    2. Explicit local-development bearer/PAT token.
+    3. Databricks notebook/runtime automatic authentication.
+
+    Credential values are never logged.
+    """
+    workspace_url = os.getenv(
+        "DATABRICKS_HOST",
+        "",
+    ).strip()
+
+    client_id = os.getenv(
+        "DATABRICKS_CLIENT_ID",
+        "",
+    ).strip()
+
+    client_secret = os.getenv(
+        "DATABRICKS_CLIENT_SECRET",
+        "",
+    ).strip()
+
+    access_token = os.getenv(
+        "DATABRICKS_TOKEN",
+        "",
+    ).strip()
+
+    if (
+        workspace_url
+        and client_id
+        and client_secret
+    ):
+        return client_cls(
+            workspace_url=workspace_url,
+            service_principal_client_id=(
+                client_id
+            ),
+            service_principal_client_secret=(
+                client_secret
+            ),
+            disable_notice=True,
+        )
+
+    if workspace_url and access_token:
+        return client_cls(
+            workspace_url=workspace_url,
+            personal_access_token=(
+                access_token
+            ),
+            disable_notice=True,
+        )
+
+    return client_cls()
 
 
 class DatabricksSearchRetriever:
@@ -77,27 +140,9 @@ class DatabricksSearchRetriever:
         try:
             from databricks.ai_search.client import AISearchClient
 
-            import os
-
-            workspace_url = os.getenv(
-                "DATABRICKS_HOST",
-                "",
-            ).strip()
-
-            access_token = os.getenv(
-                "DATABRICKS_TOKEN",
-                "",
-            ).strip()
-
-            if workspace_url and access_token:
-                client = AISearchClient(
-                    workspace_url=workspace_url,
-                    personal_access_token=access_token,
-                    disable_notice=True,
-                )
-            else:
-                # Databricks notebook/runtime authentication.
-                client = AISearchClient()
+            client = _create_ai_search_client(
+                AISearchClient
+            )
 
             get_index_kwargs = {
                 "index_name": self.index_name,

@@ -41,12 +41,21 @@ def generate(
         return generator(messages, model)
 
     if config.generation_backend == "databricks":
-        if _databricks_generate is None:
-            raise GenerationBackendError(
-                "Databricks generation backend is not configured yet."
+        generator = _databricks_generate
+
+        if generator is None:
+            if not config.databricks_generation_model.strip():
+                raise GenerationBackendError(
+                    "Databricks generation backend is not configured yet."
+                )
+
+            from src.generation.databricks_llm import (
+                generate as databricks_generate,
             )
 
-        return _databricks_generate(messages, model)
+            generator = databricks_generate
+
+        return generator(messages, model)
 
     raise GenerationBackendError(
         f"Unsupported generation backend: {config.generation_backend}"

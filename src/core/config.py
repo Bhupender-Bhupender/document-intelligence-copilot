@@ -21,7 +21,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root resolved relative to this file's location:
-#   src/core/config.py â†’ parent â†’ src/core â†’ parent â†’ src â†’ parent â†’ project root
+#   src/core/config.py Ã¢â€ â€™ parent Ã¢â€ â€™ src/core Ã¢â€ â€™ parent Ã¢â€ â€™ src Ã¢â€ â€™ parent Ã¢â€ â€™ project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -68,7 +68,7 @@ class AppConfig(BaseSettings):
         default=_PROJECT_ROOT / "data" / "processed" / "manifests",
         description="Output directory for pipeline run manifests.",
     )
-    # Legacy ChromaDB path â€” kept for non-destructive reference only.
+    # Legacy ChromaDB path Ã¢â‚¬â€ kept for non-destructive reference only.
     # The new pipeline does not write to this location.
     legacy_chroma_dir: Path = Field(
         default=_PROJECT_ROOT / "data" / "chroma_db",
@@ -105,6 +105,31 @@ class AppConfig(BaseSettings):
         default="qwen3:8b",
         description="Ollama model tag for answer generation (Phase 6+).",
     )
+    databricks_generation_model: str = Field(
+        default="",
+        description=(
+            "Unity AI Gateway model service used for managed "
+            "Databricks answer generation."
+        ),
+    )
+
+    databricks_generation_max_tokens: int = Field(
+        default=512,
+        ge=1,
+        description=(
+            "Maximum output tokens requested from the managed "
+            "Databricks generation model."
+        ),
+    )
+
+    databricks_generation_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0.0,
+        description=(
+            "Timeout in seconds for managed Databricks "
+            "generation requests."
+        ),
+    )
     ollama_base_url: str = Field(
         default="http://localhost:11434",
         description="Base URL for the local Ollama daemon (Phase 6+).",
@@ -123,7 +148,7 @@ class AppConfig(BaseSettings):
         description="Word overlap between consecutive flat chunks.",
     )
 
-    # Hierarchical chunking â€” parent/child windows for hybrid RAG.
+    # Hierarchical chunking Ã¢â‚¬â€ parent/child windows for hybrid RAG.
     # Parents provide broad synthesis context; children are the retrieval units.
     parent_chunk_size_words: int = Field(
         default=400,
@@ -285,6 +310,6 @@ class AppConfig(BaseSettings):
             "parent-chunk lookup when no active Spark session is available."
         ),
     )
-# Module-level singleton â€” import this instance in other modules.
+# Module-level singleton Ã¢â‚¬â€ import this instance in other modules.
 # Constructed once at import time using environment / .env file values.
 config = AppConfig()

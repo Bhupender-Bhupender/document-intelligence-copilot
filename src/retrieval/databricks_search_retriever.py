@@ -77,7 +77,27 @@ class DatabricksSearchRetriever:
         try:
             from databricks.ai_search.client import AISearchClient
 
-            client = AISearchClient()
+            import os
+
+            workspace_url = os.getenv(
+                "DATABRICKS_HOST",
+                "",
+            ).strip()
+
+            access_token = os.getenv(
+                "DATABRICKS_TOKEN",
+                "",
+            ).strip()
+
+            if workspace_url and access_token:
+                client = AISearchClient(
+                    workspace_url=workspace_url,
+                    personal_access_token=access_token,
+                    disable_notice=True,
+                )
+            else:
+                # Databricks notebook/runtime authentication.
+                client = AISearchClient()
 
             get_index_kwargs = {
                 "index_name": self.index_name,

@@ -262,6 +262,17 @@ def _extract_usage(
     )
 
 
+def _is_databricks_app_runtime() -> bool:
+    """Return True only inside a deployed Databricks App."""
+    return bool(
+        os.getenv(
+            "DATABRICKS_APP_NAME",
+            "",
+        ).strip()
+    )
+
+
+
 def generate_with_metadata(
     messages: List[Dict[str, str]],
     model: Optional[str] = None,
@@ -303,20 +314,35 @@ def generate_with_metadata(
 
     if client is None:
         try:
-            from openai import OpenAI
+            if _is_databricks_app_runtime():
+                # Databricks Apps run under a dedicated service
+                # principal. DatabricksOpenAI uses Databricks
+                # unified authentication directly, avoiding
+                # manual bearer-token extraction.
+                from databricks_openai import (
+                    DatabricksOpenAI,
+                )
 
-            host = _resolve_workspace_host()
-            token = _resolve_token()
+                client = DatabricksOpenAI()
 
-            client = OpenAI(
-                api_key=token,
-                base_url=(
-                    f"{host}/ai-gateway/mlflow/v1"
-                ),
-                timeout=(
-                    config.databricks_generation_timeout_seconds
-                ),
-            )
+            else:
+                # Preserve the proven local/U2M development
+                # path from Phase 12.
+                from openai import OpenAI
+
+                host = _resolve_workspace_host()
+                token = _resolve_token()
+
+                client = OpenAI(
+                    api_key=token,
+                    base_url=(
+                        f"{host}/ai-gateway/mlflow/v1"
+                    ),
+                    timeout=(
+                        config
+                        .databricks_generation_timeout_seconds
+                    ),
+                )
 
         except DatabricksGenerationError as exc:
             logger.warning(

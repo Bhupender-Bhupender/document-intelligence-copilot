@@ -8,10 +8,10 @@
 # - databricks-sql-connector
 #
 # Do not add local embedding / Chroma / Torch dependencies here.
-# The deployed app performs retrieval and generation through
-# Databricks managed services.
 
 python-dotenv
 pydantic-settings>=2.0
+structlog
 openai>=1.0,<3
 databricks-ai-search
+databricks-openai==0.17.1

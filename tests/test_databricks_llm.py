@@ -357,3 +357,40 @@ def test_safe_generation_error_metadata_reads_chained_cause():
         "private auth detail"
         not in str(metadata)
     )
+
+
+
+def test_databricks_generation_detects_app_runtime(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _is_databricks_app_runtime,
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_APP_NAME",
+        "test-app",
+    )
+
+    assert (
+        _is_databricks_app_runtime()
+        is True
+    )
+
+
+def test_databricks_generation_detects_non_app_runtime(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _is_databricks_app_runtime,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_APP_NAME",
+        raising=False,
+    )
+
+    assert (
+        _is_databricks_app_runtime()
+        is False
+    )

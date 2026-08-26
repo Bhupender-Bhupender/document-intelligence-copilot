@@ -45,11 +45,16 @@ ServiceError is raised for:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from src.indexing.index_builder import IndexManifest
 from src.schema.models import AnswerResponse
+
 from src.utils.logging_utils import get_logger
+
+if TYPE_CHECKING:
+    from src.indexing.index_builder import (
+        IndexManifest,
+    )
 
 logger = get_logger(__name__)
 

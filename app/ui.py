@@ -154,6 +154,98 @@ def _handle_answer(
         return (f"Unexpected error: {exc}", "", "")
 
 
+
+def _format_serving_metadata(response) -> str:
+    """Render safe serving/runtime metadata."""
+    filters = (
+        ", ".join(response.applied_filters)
+        if response.applied_filters
+        else "(none)"
+    )
+
+    return (
+        f"Backend: {response.generation_backend}\n"
+        f"Model: {response.model_used}\n"
+        f"Retrieval latency: "
+        f"{response.retrieval_latency_ms:.2f} ms\n"
+        f"Generation latency: "
+        f"{response.generation_latency_ms:.2f} ms\n"
+        f"Total latency: "
+        f"{response.total_latency_ms:.2f} ms\n"
+        f"Applied filters: {filters}"
+    )
+
+
+def _handle_served_answer(
+    query: str,
+    retrieval_top_k: int,
+    final_k: int,
+    model: str,
+    *,
+    _answer_service=None,
+) -> Tuple[str, str, str]:
+    """
+    Answer through the Phase 11/12 evidence-serving contract.
+
+    Returns:
+        answer text,
+        citations,
+        safe runtime metadata.
+    """
+    try:
+        from app.serving_service import (
+            ServingServiceError,
+            answer_with_evidence,
+        )
+        from src.schema.serving_models import (
+            ServingAnswerRequest,
+        )
+
+        callable_ = (
+            _answer_service
+            or answer_with_evidence
+        )
+
+        model_value = (
+            model.strip()
+            if model and model.strip()
+            else None
+        )
+
+        request = ServingAnswerRequest(
+            query=query,
+            top_k=int(retrieval_top_k),
+            final_k=int(final_k),
+            include_parent_context=True,
+            model=model_value,
+        )
+
+        response = callable_(
+            request
+        )
+
+        return (
+            response.answer_text,
+            _format_citations(response),
+            _format_serving_metadata(response),
+        )
+
+    except ServingServiceError as exc:
+        return (
+            f"Query failed: {exc}",
+            "",
+            "",
+        )
+
+    except Exception:
+        return (
+            "Unexpected error while processing "
+            "the request.",
+            "",
+            "",
+        )
+
+
 # ---------------------------------------------------------------------------
 # UI builder — lazy Gradio import
 # ---------------------------------------------------------------------------
@@ -207,7 +299,7 @@ def build_ui():  # return type is gr.Blocks; annotated lazily to stay import-lig
         # Tab 2: Ask a Question                                               #
         # ------------------------------------------------------------------ #
         with gr.Tab("Ask a Question"):
-            gr.Markdown("Ask a question against your indexed documents.")
+            gr.Markdown("Ask a question using the evidence-grounded serving pipeline.")
             query_input = gr.Textbox(
                 label="Question",
                 placeholder="What does the document say about\u2026",
@@ -222,12 +314,12 @@ def build_ui():  # return type is gr.Blocks; annotated lazily to stay import-lig
                     step=1,
                     label="Retrieval top-k",
                 )
-                rerank_top_k = gr.Slider(
+                final_k = gr.Slider(
                     minimum=1,
                     maximum=15,
                     value=5,
                     step=1,
-                    label="Rerank top-k",
+                    label="Final evidence top-k",
                 )
                 model_input = gr.Textbox(
                     label="Model override",
@@ -246,16 +338,25 @@ def build_ui():  # return type is gr.Blocks; annotated lazily to stay import-lig
                 interactive=False,
                 lines=8,
             )
-            flags_output = gr.Textbox(
-                label="Validation flags",
+            metadata_output = gr.Textbox(
+                label="Runtime metadata",
                 interactive=False,
                 lines=3,
             )
 
             ask_btn.click(
-                fn=_handle_answer,
-                inputs=[query_input, retrieval_top_k, rerank_top_k, model_input],
-                outputs=[answer_output, citations_output, flags_output],
+                fn=_handle_served_answer,
+                inputs=[
+                    query_input,
+                    retrieval_top_k,
+                    final_k,
+                    model_input,
+                ],
+                outputs=[
+                    answer_output,
+                    citations_output,
+                    metadata_output,
+                ],
             )
 
     return demo

@@ -192,3 +192,90 @@ def test_reasoning_only_content_is_rejected():
             model="system.ai.test-model",
             _client=client,
         )
+
+
+
+def test_resolve_token_prefers_environment(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _resolve_token,
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_TOKEN",
+        "local-dev-token",
+    )
+
+    class ExplodingClient:
+        @property
+        def config(self):
+            raise AssertionError(
+                "SDK fallback must not run"
+            )
+
+    assert _resolve_token(
+        _workspace_client=ExplodingClient()
+    ) == "local-dev-token"
+
+
+def test_resolve_token_supports_unified_app_auth(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _resolve_token,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_TOKEN",
+        raising=False,
+    )
+
+    class FakeConfig:
+        def authenticate(self):
+            return {
+                "Authorization":
+                    "Bearer app-oauth-token"
+            }
+
+    class FakeWorkspaceClient:
+        config = FakeConfig()
+
+    assert _resolve_token(
+        _workspace_client=(
+            FakeWorkspaceClient()
+        )
+    ) == "app-oauth-token"
+
+
+def test_resolve_token_rejects_missing_bearer(
+    monkeypatch,
+):
+    import pytest
+
+    from src.generation.databricks_llm import (
+        DatabricksGenerationError,
+        _resolve_token,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_TOKEN",
+        raising=False,
+    )
+
+    class FakeConfig:
+        def authenticate(self):
+            return {}
+
+    class FakeWorkspaceClient:
+        config = FakeConfig()
+
+    with pytest.raises(
+        DatabricksGenerationError,
+        match="bearer token",
+    ):
+        _resolve_token(
+            _workspace_client=(
+                FakeWorkspaceClient()
+            )
+        )

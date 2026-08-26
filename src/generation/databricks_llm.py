@@ -64,18 +64,76 @@ def _resolve_workspace_host() -> str:
     return host
 
 
-def _resolve_token() -> str:
+def _resolve_token(
+    *,
+    _workspace_client=None,
+) -> str:
     """
-    Resolve the development authentication token.
+    Resolve a Databricks OAuth bearer token.
 
-    Production machine-to-machine OAuth is wired during the serving/security
-    phases; no credential is persisted by this adapter.
+    Local development:
+        Prefer a transient DATABRICKS_TOKEN.
+
+    Databricks Apps / production:
+        Fall back to Databricks unified authentication through
+        WorkspaceClient. No credential value is logged.
     """
-    token = os.environ.get("DATABRICKS_TOKEN", "").strip()
+    token = os.getenv(
+        "DATABRICKS_TOKEN",
+        "",
+    ).strip()
+
+    if token:
+        return token
+
+    try:
+        if _workspace_client is None:
+            from databricks.sdk import (
+                WorkspaceClient,
+            )
+
+            workspace_client = (
+                WorkspaceClient()
+            )
+        else:
+            workspace_client = (
+                _workspace_client
+            )
+
+        headers = (
+            workspace_client
+            .config
+            .authenticate()
+        )
+
+    except Exception as exc:
+        raise DatabricksGenerationError(
+            "Databricks authentication "
+            "is not configured."
+        ) from exc
+
+    authorization = (
+        headers.get("Authorization")
+        or headers.get("authorization")
+        or ""
+    ).strip()
+
+    prefix = "Bearer "
+
+    if not authorization.startswith(prefix):
+        raise DatabricksGenerationError(
+            "Databricks authentication did "
+            "not provide a bearer token."
+        )
+
+    token = authorization[
+        len(prefix):
+    ].strip()
 
     if not token:
         raise DatabricksGenerationError(
-            "Databricks authentication token is not configured."
+            "Databricks authentication did "
+            "not provide a bearer token."
         )
 
     return token

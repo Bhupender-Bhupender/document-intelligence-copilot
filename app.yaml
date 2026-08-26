@@ -25,4 +25,4 @@ env:
     value: docintel_ai_search
 
   - name: DATABRICKS_GENERATION_MODEL
-    value: system.ai.qwen3-next-80b-a3b-instruct
+    valueFrom: generation-endpoint

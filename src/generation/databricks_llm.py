@@ -15,10 +15,84 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from src.core.config import config
+from src.utils.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 
 
 class DatabricksGenerationError(RuntimeError):
     """Raised when managed Databricks generation cannot be completed."""
+
+
+def _safe_generation_error_metadata(
+    exc: Exception,
+) -> dict:
+    """
+    Return non-sensitive provider error metadata.
+
+    Inspect one chained cause when present because authentication
+    helpers can wrap SDK/provider exceptions.
+
+    Never includes exception messages, prompts, responses, URLs,
+    credentials, tokens, or model output.
+    """
+    target = (
+        getattr(exc, "__cause__", None)
+        or exc
+    )
+
+    status_code = getattr(
+        target,
+        "status_code",
+        None,
+    )
+
+    response = getattr(
+        target,
+        "response",
+        None,
+    )
+
+    if (
+        status_code is None
+        and response is not None
+    ):
+        status_code = getattr(
+            response,
+            "status_code",
+            None,
+        )
+
+    error_code = getattr(
+        target,
+        "code",
+        None,
+    )
+
+    if error_code is None:
+        error_code = getattr(
+            target,
+            "error_code",
+            None,
+        )
+
+    return {
+        "cause_type":
+            type(target).__name__,
+
+        "status_code":
+            status_code,
+
+        "error_code":
+            (
+                str(error_code)
+                if error_code is not None
+                else None
+            ),
+    }
+
 
 
 @dataclass(frozen=True)
@@ -244,10 +318,23 @@ def generate_with_metadata(
                 ),
             )
 
-        except DatabricksGenerationError:
+        except DatabricksGenerationError as exc:
+            logger.warning(
+                "databricks_generation_client_init_failed",
+                **_safe_generation_error_metadata(
+                    exc
+                ),
+            )
             raise
 
         except Exception as exc:
+            logger.warning(
+                "databricks_generation_client_init_failed",
+                **_safe_generation_error_metadata(
+                    exc
+                ),
+            )
+
             raise DatabricksGenerationError(
                 "Unable to initialize the Databricks "
                 "generation client."
@@ -261,6 +348,13 @@ def generate_with_metadata(
         )
 
     except Exception as exc:
+        logger.warning(
+            "databricks_generation_provider_failed",
+            **_safe_generation_error_metadata(
+                exc
+            ),
+        )
+
         raise DatabricksGenerationError(
             "Managed Databricks generation request failed."
         ) from exc

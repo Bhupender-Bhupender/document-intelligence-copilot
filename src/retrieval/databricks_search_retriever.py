@@ -9,6 +9,7 @@ No Databricks SDK type crosses this module boundary.
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -139,6 +140,90 @@ def _safe_error_metadata(
 
 
 
+
+class _WorkspaceSdkSearchIndex:
+    """
+    Compatibility adapter over the Databricks SDK AI Search API.
+
+    Databricks Apps should use WorkspaceClient unified authentication
+    rather than manually forwarding the app service-principal secret
+    into AISearchClient.
+
+    The adapter retains the similarity_search() interface expected by
+    DatabricksSearchRetriever.
+    """
+
+    def __init__(
+        self,
+        workspace_client: Any,
+        index_name: str,
+    ) -> None:
+        self._workspace_client = (
+            workspace_client
+        )
+
+        self._index_name = index_name
+
+    def similarity_search(
+        self,
+        *,
+        query_text: str,
+        columns: Sequence[str],
+        num_results: int,
+        query_type: str = "hybrid",
+        filters: Optional[dict] = None,
+    ) -> Dict[str, Any]:
+        filters_json = None
+
+        if filters:
+            filters_json = json.dumps(
+                filters,
+                separators=(",", ":"),
+            )
+
+        response = (
+            self._workspace_client
+            .vector_search_indexes
+            .query_index(
+                index_name=self._index_name,
+                columns=list(columns),
+                query_text=query_text,
+                num_results=num_results,
+                query_type=(
+                    str(query_type).upper()
+                ),
+                filters_json=filters_json,
+            )
+        )
+
+        if isinstance(response, dict):
+            return response
+
+        serializer = getattr(
+            response,
+            "as_dict",
+            None,
+        )
+
+        if callable(serializer):
+            return serializer()
+
+        raise TypeError(
+            "Databricks SDK returned an "
+            "unsupported AI Search response."
+        )
+
+
+def _is_databricks_app_runtime() -> bool:
+    """Return True only inside a deployed Databricks App."""
+    return bool(
+        os.getenv(
+            "DATABRICKS_APP_NAME",
+            "",
+        ).strip()
+    )
+
+
 class DatabricksSearchRetriever:
     """Hybrid child-chunk retriever backed by Databricks AI Search."""
 
@@ -180,19 +265,47 @@ class DatabricksSearchRetriever:
 
     def _get_index(self) -> Any:
         """
-        Lazily obtain the Databricks AI Search index.
+        Lazily obtain the configured AI Search index.
 
-        Import is intentionally deferred so local unit tests do not require
-        the Databricks AI Search SDK.
+        Databricks App:
+            WorkspaceClient + vector_search_indexes.query_index
+
+        Local development / notebook:
+            Existing AISearchClient path
+
+        The public retriever contract remains unchanged.
         """
         if self._index is not None:
             return self._index
 
         try:
-            from databricks.ai_search.client import AISearchClient
+            if _is_databricks_app_runtime():
+                # Databricks Apps automatically configure
+                # WorkspaceClient with the App's dedicated
+                # service-principal identity.
+                from databricks.sdk import (
+                    WorkspaceClient,
+                )
 
-            client = _create_ai_search_client(
-                AISearchClient
+                self._index = (
+                    _WorkspaceSdkSearchIndex(
+                        WorkspaceClient(),
+                        self.index_name,
+                    )
+                )
+
+                return self._index
+
+            # Preserve the proven Phase 10/12 local and
+            # Databricks-runtime path.
+            from databricks.ai_search.client import (
+                AISearchClient,
+            )
+
+            client = (
+                _create_ai_search_client(
+                    AISearchClient
+                )
             )
 
             get_index_kwargs = {
@@ -200,9 +313,14 @@ class DatabricksSearchRetriever:
             }
 
             if self.endpoint_name:
-                get_index_kwargs["endpoint_name"] = self.endpoint_name
+                get_index_kwargs[
+                    "endpoint_name"
+                ] = self.endpoint_name
 
-            self._index = client.get_index(**get_index_kwargs)
+            self._index = client.get_index(
+                **get_index_kwargs
+            )
+
             return self._index
 
         except Exception as exc:
@@ -212,7 +330,9 @@ class DatabricksSearchRetriever:
             )
 
             raise DatabricksSearchRetrievalError(
-                "Unable to connect to the configured Databricks AI Search index."
+                "Unable to connect to the "
+                "configured Databricks AI "
+                "Search index."
             ) from exc
 
     def retrieve(

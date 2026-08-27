@@ -65,3 +65,6 @@ docs/baseline/*_local_mapping.csv
 
 # Private/generated baseline evaluation runs
 data/eval/baseline_runtime/
+
+# Databricks App deployment staging
+.phase13_app_deploy/

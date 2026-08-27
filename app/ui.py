@@ -43,6 +43,8 @@ no duck-typing or version-dependent file-object handling is used.
 """
 from __future__ import annotations
 
+import os
+
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from app.service import ServiceError, answer_query, index_document
@@ -251,6 +253,31 @@ def _handle_served_answer(
 # ---------------------------------------------------------------------------
 
 
+def _show_local_indexing(
+    runtime_mode: str | None = None,
+) -> bool:
+    """
+    Show document indexing only in the local runtime.
+
+    The deployed Databricks App is intentionally query-only.
+    """
+    mode = (
+        runtime_mode
+        if runtime_mode is not None
+        else os.getenv(
+            "RUNTIME_MODE",
+            "local",
+        )
+    )
+
+    return (
+        str(mode)
+        .strip()
+        .lower()
+        == "local"
+    )
+
+
 def build_ui():  # return type is gr.Blocks; annotated lazily to stay import-light
     """
     Build and return the Gradio Blocks application.
@@ -266,38 +293,46 @@ def build_ui():  # return type is gr.Blocks; annotated lazily to stay import-lig
       citation list, and validation flags rendered in separate output boxes.
     """
     import gradio as gr  # lazy — only runs when the UI is actually constructed
+    show_local_indexing = _show_local_indexing()
 
     with gr.Blocks(title="Document Intelligence Copilot") as demo:
         gr.Markdown(
             "# Document Intelligence Copilot\n"
-            "Local RAG pipeline with hybrid retrieval and grounded answer synthesis."
+            + (
+                "Local RAG pipeline with hybrid retrieval "
+                "and grounded answer synthesis."
+                if show_local_indexing
+                else "Managed Databricks retrieval and grounded "
+                "answer generation."
+            )
         )
 
         # ------------------------------------------------------------------ #
         # Tab 1: Index Document                                               #
         # ------------------------------------------------------------------ #
-        with gr.Tab("Index Document"):
-            gr.Markdown("Upload a document to add it to the retrieval index.")
-            index_file = gr.File(
-                label="Select document",
-                file_types=[".txt", ".md", ".pdf", ".docx"],
-                type="filepath",
-            )
-            index_btn = gr.Button("Index Document", variant="primary")
-            index_status = gr.Textbox(
-                label="Indexing result",
-                interactive=False,
-                lines=6,
-            )
-            index_btn.click(
-                fn=_handle_index,
-                inputs=[index_file],
-                outputs=[index_status],
-            )
+        if show_local_indexing:
+            with gr.Tab("Index Document"):
+                gr.Markdown("Upload a document to add it to the retrieval index.")
+                index_file = gr.File(
+                    label="Select document",
+                    file_types=[".txt", ".md", ".pdf", ".docx"],
+                    type="filepath",
+                )
+                index_btn = gr.Button("Index Document", variant="primary")
+                index_status = gr.Textbox(
+                    label="Indexing result",
+                    interactive=False,
+                    lines=6,
+                )
+                index_btn.click(
+                    fn=_handle_index,
+                    inputs=[index_file],
+                    outputs=[index_status],
+                )
 
-        # ------------------------------------------------------------------ #
-        # Tab 2: Ask a Question                                               #
-        # ------------------------------------------------------------------ #
+            # ------------------------------------------------------------------ #
+            # Tab 2: Ask a Question                                               #
+            # ------------------------------------------------------------------ #
         with gr.Tab("Ask a Question"):
             gr.Markdown("Ask a question using the evidence-grounded serving pipeline.")
             query_input = gr.Textbox(

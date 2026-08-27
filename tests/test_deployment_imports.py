@@ -57,3 +57,53 @@ print("CLOUD_RUNTIME_IMPORT_SAFE: True")
         "CLOUD_RUNTIME_IMPORT_SAFE: True"
         in result.stdout
     )
+
+
+
+def test_cloud_runtime_does_not_eagerly_load_legacy_answer_engine():
+    code = r"""
+import sys
+
+import app.runtime
+
+print(
+    "LEGACY_ANSWER_ENGINE_IMPORTED:",
+    "src.generation.answer_engine"
+    in sys.modules,
+)
+
+if "src.generation.answer_engine" in sys.modules:
+    raise RuntimeError(
+        "Legacy answer_engine was eagerly "
+        "loaded by cloud runtime."
+    )
+"""
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, (
+        result.stdout
+        + "\n"
+        + result.stderr
+    )
+
+
+def test_cloud_requirements_include_structlog():
+    from pathlib import Path
+
+    requirements = Path(
+        "requirements.txt"
+    ).read_text(
+        encoding="utf-8"
+    ).lower()
+
+    assert "structlog" in requirements

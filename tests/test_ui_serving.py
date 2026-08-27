@@ -163,3 +163,29 @@ def test_unexpected_failure_does_not_leak_details():
 
     assert citations == ""
     assert metadata == ""
+
+
+
+def test_local_runtime_shows_indexing():
+    from app.ui import _show_local_indexing
+
+    assert _show_local_indexing("local") is True
+
+
+def test_databricks_runtime_hides_indexing():
+    from app.ui import _show_local_indexing
+
+    assert _show_local_indexing("databricks") is False
+
+
+def test_missing_runtime_mode_defaults_to_local(
+    monkeypatch,
+):
+    from app.ui import _show_local_indexing
+
+    monkeypatch.delenv(
+        "RUNTIME_MODE",
+        raising=False,
+    )
+
+    assert _show_local_indexing() is True

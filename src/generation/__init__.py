@@ -1,6 +1,31 @@
-from src.generation.answer_engine import synthesise
-from src.generation.answer_pipeline import run_pipeline
-from src.generation.generation_gateway import generate
-from src.generation.prompt_templates import build_grounded_messages
+﻿"""
+Generation package.
 
-__all__ = ["build_grounded_messages", "generate", "run_pipeline", "synthesise"]
+Legacy synthesis exports are resolved lazily so importing Phase 12
+evidence-generation modules does not eagerly load the older generation
+pipeline.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+__all__ = [
+    "synthesise",
+]
+
+
+def __getattr__(
+    name: str,
+) -> Any:
+    if name != "synthesise":
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}"
+        )
+
+    from src.generation.answer_engine import (
+        synthesise,
+    )
+
+    return synthesise

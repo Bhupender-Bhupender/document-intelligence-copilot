@@ -15,10 +15,84 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from src.core.config import config
+from src.utils.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 
 
 class DatabricksGenerationError(RuntimeError):
     """Raised when managed Databricks generation cannot be completed."""
+
+
+def _safe_generation_error_metadata(
+    exc: Exception,
+) -> dict:
+    """
+    Return non-sensitive provider error metadata.
+
+    Inspect one chained cause when present because authentication
+    helpers can wrap SDK/provider exceptions.
+
+    Never includes exception messages, prompts, responses, URLs,
+    credentials, tokens, or model output.
+    """
+    target = (
+        getattr(exc, "__cause__", None)
+        or exc
+    )
+
+    status_code = getattr(
+        target,
+        "status_code",
+        None,
+    )
+
+    response = getattr(
+        target,
+        "response",
+        None,
+    )
+
+    if (
+        status_code is None
+        and response is not None
+    ):
+        status_code = getattr(
+            response,
+            "status_code",
+            None,
+        )
+
+    error_code = getattr(
+        target,
+        "code",
+        None,
+    )
+
+    if error_code is None:
+        error_code = getattr(
+            target,
+            "error_code",
+            None,
+        )
+
+    return {
+        "cause_type":
+            type(target).__name__,
+
+        "status_code":
+            status_code,
+
+        "error_code":
+            (
+                str(error_code)
+                if error_code is not None
+                else None
+            ),
+    }
+
 
 
 @dataclass(frozen=True)
@@ -64,18 +138,76 @@ def _resolve_workspace_host() -> str:
     return host
 
 
-def _resolve_token() -> str:
+def _resolve_token(
+    *,
+    _workspace_client=None,
+) -> str:
     """
-    Resolve the development authentication token.
+    Resolve a Databricks OAuth bearer token.
 
-    Production machine-to-machine OAuth is wired during the serving/security
-    phases; no credential is persisted by this adapter.
+    Local development:
+        Prefer a transient DATABRICKS_TOKEN.
+
+    Databricks Apps / production:
+        Fall back to Databricks unified authentication through
+        WorkspaceClient. No credential value is logged.
     """
-    token = os.environ.get("DATABRICKS_TOKEN", "").strip()
+    token = os.getenv(
+        "DATABRICKS_TOKEN",
+        "",
+    ).strip()
+
+    if token:
+        return token
+
+    try:
+        if _workspace_client is None:
+            from databricks.sdk import (
+                WorkspaceClient,
+            )
+
+            workspace_client = (
+                WorkspaceClient()
+            )
+        else:
+            workspace_client = (
+                _workspace_client
+            )
+
+        headers = (
+            workspace_client
+            .config
+            .authenticate()
+        )
+
+    except Exception as exc:
+        raise DatabricksGenerationError(
+            "Databricks authentication "
+            "is not configured."
+        ) from exc
+
+    authorization = (
+        headers.get("Authorization")
+        or headers.get("authorization")
+        or ""
+    ).strip()
+
+    prefix = "Bearer "
+
+    if not authorization.startswith(prefix):
+        raise DatabricksGenerationError(
+            "Databricks authentication did "
+            "not provide a bearer token."
+        )
+
+    token = authorization[
+        len(prefix):
+    ].strip()
 
     if not token:
         raise DatabricksGenerationError(
-            "Databricks authentication token is not configured."
+            "Databricks authentication did "
+            "not provide a bearer token."
         )
 
     return token
@@ -130,6 +262,17 @@ def _extract_usage(
     )
 
 
+def _is_databricks_app_runtime() -> bool:
+    """Return True only inside a deployed Databricks App."""
+    return bool(
+        os.getenv(
+            "DATABRICKS_APP_NAME",
+            "",
+        ).strip()
+    )
+
+
+
 def generate_with_metadata(
     messages: List[Dict[str, str]],
     model: Optional[str] = None,
@@ -171,25 +314,53 @@ def generate_with_metadata(
 
     if client is None:
         try:
-            from openai import OpenAI
+            if _is_databricks_app_runtime():
+                # Databricks Apps run under a dedicated service
+                # principal. DatabricksOpenAI uses Databricks
+                # unified authentication directly, avoiding
+                # manual bearer-token extraction.
+                from databricks_openai import (
+                    DatabricksOpenAI,
+                )
 
-            host = _resolve_workspace_host()
-            token = _resolve_token()
+                client = DatabricksOpenAI()
 
-            client = OpenAI(
-                api_key=token,
-                base_url=(
-                    f"{host}/ai-gateway/mlflow/v1"
-                ),
-                timeout=(
-                    config.databricks_generation_timeout_seconds
+            else:
+                # Preserve the proven local/U2M development
+                # path from Phase 12.
+                from openai import OpenAI
+
+                host = _resolve_workspace_host()
+                token = _resolve_token()
+
+                client = OpenAI(
+                    api_key=token,
+                    base_url=(
+                        f"{host}/ai-gateway/mlflow/v1"
+                    ),
+                    timeout=(
+                        config
+                        .databricks_generation_timeout_seconds
+                    ),
+                )
+
+        except DatabricksGenerationError as exc:
+            logger.warning(
+                "databricks_generation_client_init_failed",
+                **_safe_generation_error_metadata(
+                    exc
                 ),
             )
-
-        except DatabricksGenerationError:
             raise
 
         except Exception as exc:
+            logger.warning(
+                "databricks_generation_client_init_failed",
+                **_safe_generation_error_metadata(
+                    exc
+                ),
+            )
+
             raise DatabricksGenerationError(
                 "Unable to initialize the Databricks "
                 "generation client."
@@ -203,6 +374,13 @@ def generate_with_metadata(
         )
 
     except Exception as exc:
+        logger.warning(
+            "databricks_generation_provider_failed",
+            **_safe_generation_error_metadata(
+                exc
+            ),
+        )
+
         raise DatabricksGenerationError(
             "Managed Databricks generation request failed."
         ) from exc

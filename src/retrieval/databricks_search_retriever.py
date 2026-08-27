@@ -9,6 +9,8 @@ No Databricks SDK type crosses this module boundary.
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from src.schema.models import DocumentChunk, RetrievedChunk
@@ -23,6 +25,203 @@ ParentRowsLoader = Callable[
 
 class DatabricksSearchRetrievalError(Exception):
     """Raised when Databricks AI Search retrieval cannot be completed safely."""
+
+
+def _create_ai_search_client(
+    client_cls: Any,
+) -> Any:
+    """
+    Create an AI Search client using the appropriate runtime identity.
+
+    Authentication precedence:
+
+    1. Databricks App service principal.
+    2. Explicit local-development bearer/PAT token.
+    3. Databricks notebook/runtime automatic authentication.
+
+    Credential values are never logged.
+    """
+    workspace_url = os.getenv(
+        "DATABRICKS_HOST",
+        "",
+    ).strip()
+
+    client_id = os.getenv(
+        "DATABRICKS_CLIENT_ID",
+        "",
+    ).strip()
+
+    client_secret = os.getenv(
+        "DATABRICKS_CLIENT_SECRET",
+        "",
+    ).strip()
+
+    access_token = os.getenv(
+        "DATABRICKS_TOKEN",
+        "",
+    ).strip()
+
+    if (
+        workspace_url
+        and client_id
+        and client_secret
+    ):
+        return client_cls(
+            workspace_url=workspace_url,
+            service_principal_client_id=(
+                client_id
+            ),
+            service_principal_client_secret=(
+                client_secret
+            ),
+            disable_notice=True,
+        )
+
+    if workspace_url and access_token:
+        return client_cls(
+            workspace_url=workspace_url,
+            personal_access_token=(
+                access_token
+            ),
+            disable_notice=True,
+        )
+
+    return client_cls()
+
+
+def _safe_error_metadata(
+    exc: Exception,
+) -> dict:
+    """
+    Extract non-sensitive provider failure metadata.
+
+    Never includes exception messages, URLs, request payloads,
+    queries, credentials, document identifiers, or response bodies.
+    """
+    status_code = getattr(
+        exc,
+        "status_code",
+        None,
+    )
+
+    if status_code is None:
+        response = getattr(
+            exc,
+            "response",
+            None,
+        )
+
+        status_code = getattr(
+            response,
+            "status_code",
+            None,
+        )
+
+    error_code = getattr(
+        exc,
+        "error_code",
+        None,
+    )
+
+    return {
+        "cause_type":
+            type(exc).__name__,
+
+        "status_code":
+            status_code,
+
+        "error_code":
+            (
+                str(error_code)
+                if error_code is not None
+                else None
+            ),
+    }
+
+
+
+
+class _WorkspaceSdkSearchIndex:
+    """
+    Compatibility adapter over the Databricks SDK AI Search API.
+
+    Databricks Apps should use WorkspaceClient unified authentication
+    rather than manually forwarding the app service-principal secret
+    into AISearchClient.
+
+    The adapter retains the similarity_search() interface expected by
+    DatabricksSearchRetriever.
+    """
+
+    def __init__(
+        self,
+        workspace_client: Any,
+        index_name: str,
+    ) -> None:
+        self._workspace_client = (
+            workspace_client
+        )
+
+        self._index_name = index_name
+
+    def similarity_search(
+        self,
+        *,
+        query_text: str,
+        columns: Sequence[str],
+        num_results: int,
+        query_type: str = "hybrid",
+        filters: Optional[dict] = None,
+    ) -> Dict[str, Any]:
+        filters_json = None
+
+        if filters:
+            filters_json = json.dumps(
+                filters,
+                separators=(",", ":"),
+            )
+
+        response = (
+            self._workspace_client
+            .vector_search_indexes
+            .query_index(
+                index_name=self._index_name,
+                columns=list(columns),
+                query_text=query_text,
+                num_results=num_results,
+                query_type=(
+                    str(query_type).upper()
+                ),
+                filters_json=filters_json,
+            )
+        )
+
+        if isinstance(response, dict):
+            return response
+
+        serializer = getattr(
+            response,
+            "as_dict",
+            None,
+        )
+
+        if callable(serializer):
+            return serializer()
+
+        raise TypeError(
+            "Databricks SDK returned an "
+            "unsupported AI Search response."
+        )
+
+
+def _is_databricks_app_runtime() -> bool:
+    """Return True only inside a deployed Databricks App."""
+    return bool(
+        os.getenv(
+            "DATABRICKS_APP_NAME",
+            "",
+        ).strip()
+    )
 
 
 class DatabricksSearchRetriever:
@@ -66,52 +265,74 @@ class DatabricksSearchRetriever:
 
     def _get_index(self) -> Any:
         """
-        Lazily obtain the Databricks AI Search index.
+        Lazily obtain the configured AI Search index.
 
-        Import is intentionally deferred so local unit tests do not require
-        the Databricks AI Search SDK.
+        Databricks App:
+            WorkspaceClient + vector_search_indexes.query_index
+
+        Local development / notebook:
+            Existing AISearchClient path
+
+        The public retriever contract remains unchanged.
         """
         if self._index is not None:
             return self._index
 
         try:
-            from databricks.ai_search.client import AISearchClient
-
-            import os
-
-            workspace_url = os.getenv(
-                "DATABRICKS_HOST",
-                "",
-            ).strip()
-
-            access_token = os.getenv(
-                "DATABRICKS_TOKEN",
-                "",
-            ).strip()
-
-            if workspace_url and access_token:
-                client = AISearchClient(
-                    workspace_url=workspace_url,
-                    personal_access_token=access_token,
-                    disable_notice=True,
+            if _is_databricks_app_runtime():
+                # Databricks Apps automatically configure
+                # WorkspaceClient with the App's dedicated
+                # service-principal identity.
+                from databricks.sdk import (
+                    WorkspaceClient,
                 )
-            else:
-                # Databricks notebook/runtime authentication.
-                client = AISearchClient()
+
+                self._index = (
+                    _WorkspaceSdkSearchIndex(
+                        WorkspaceClient(),
+                        self.index_name,
+                    )
+                )
+
+                return self._index
+
+            # Preserve the proven Phase 10/12 local and
+            # Databricks-runtime path.
+            from databricks.ai_search.client import (
+                AISearchClient,
+            )
+
+            client = (
+                _create_ai_search_client(
+                    AISearchClient
+                )
+            )
 
             get_index_kwargs = {
                 "index_name": self.index_name,
             }
 
             if self.endpoint_name:
-                get_index_kwargs["endpoint_name"] = self.endpoint_name
+                get_index_kwargs[
+                    "endpoint_name"
+                ] = self.endpoint_name
 
-            self._index = client.get_index(**get_index_kwargs)
+            self._index = client.get_index(
+                **get_index_kwargs
+            )
+
             return self._index
 
         except Exception as exc:
+            logger.warning(
+                "databricks_ai_search_index_connect_failed",
+                **_safe_error_metadata(exc),
+            )
+
             raise DatabricksSearchRetrievalError(
-                "Unable to connect to the configured Databricks AI Search index."
+                "Unable to connect to the "
+                "configured Databricks AI "
+                "Search index."
             ) from exc
 
     def retrieve(
@@ -144,7 +365,13 @@ class DatabricksSearchRetriever:
                 **search_kwargs
             )
         except Exception as exc:
-            # Do not include query text in logs or exception messages.
+            # Do not include query text, filters, document identifiers,
+            # response bodies, or credentials in logs.
+            logger.warning(
+                "databricks_ai_search_query_failed",
+                **_safe_error_metadata(exc),
+            )
+
             raise DatabricksSearchRetrievalError(
                 "Databricks AI Search hybrid retrieval failed."
             ) from exc

@@ -1,5 +1,18 @@
-pypdf
+﻿# Databricks Apps serving dependencies
+#
+# Databricks Apps already provides:
+# - FastAPI
+# - Uvicorn
+# - Gradio
+# - databricks-sdk
+# - databricks-sql-connector
+#
+# Do not add local embedding / Chroma / Torch dependencies here.
+
 python-dotenv
-tqdm
-sentence-transformers
-chromadb
+pydantic-settings>=2.0
+structlog
+openai>=1.0,<3
+databricks-ai-search
+databricks-openai==0.17.1
+gradio==6.25.0

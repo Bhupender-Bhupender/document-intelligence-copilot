@@ -1,0 +1,28 @@
+﻿command:
+  - uvicorn
+  - app.runtime:app
+
+env:
+  - name: RUNTIME_MODE
+    value: databricks
+
+  - name: SEARCH_BACKEND
+    value: databricks
+
+  - name: GENERATION_BACKEND
+    value: databricks
+
+  - name: DATABRICKS_AI_SEARCH_INDEX_NAME
+    valueFrom: vector-search-index
+
+  - name: DATABRICKS_SQL_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+
+  - name: DATABRICKS_PARENT_CHUNKS_TABLE
+    valueFrom: parent-chunks
+
+  - name: DATABRICKS_AI_SEARCH_ENDPOINT_NAME
+    value: docintel_ai_search
+
+  - name: DATABRICKS_GENERATION_MODEL
+    valueFrom: generation-endpoint

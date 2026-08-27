@@ -192,3 +192,205 @@ def test_reasoning_only_content_is_rejected():
             model="system.ai.test-model",
             _client=client,
         )
+
+
+
+def test_resolve_token_prefers_environment(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _resolve_token,
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_TOKEN",
+        "local-dev-token",
+    )
+
+    class ExplodingClient:
+        @property
+        def config(self):
+            raise AssertionError(
+                "SDK fallback must not run"
+            )
+
+    assert _resolve_token(
+        _workspace_client=ExplodingClient()
+    ) == "local-dev-token"
+
+
+def test_resolve_token_supports_unified_app_auth(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _resolve_token,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_TOKEN",
+        raising=False,
+    )
+
+    class FakeConfig:
+        def authenticate(self):
+            return {
+                "Authorization":
+                    "Bearer app-oauth-token"
+            }
+
+    class FakeWorkspaceClient:
+        config = FakeConfig()
+
+    assert _resolve_token(
+        _workspace_client=(
+            FakeWorkspaceClient()
+        )
+    ) == "app-oauth-token"
+
+
+def test_resolve_token_rejects_missing_bearer(
+    monkeypatch,
+):
+    import pytest
+
+    from src.generation.databricks_llm import (
+        DatabricksGenerationError,
+        _resolve_token,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_TOKEN",
+        raising=False,
+    )
+
+    class FakeConfig:
+        def authenticate(self):
+            return {}
+
+    class FakeWorkspaceClient:
+        config = FakeConfig()
+
+    with pytest.raises(
+        DatabricksGenerationError,
+        match="bearer token",
+    ):
+        _resolve_token(
+            _workspace_client=(
+                FakeWorkspaceClient()
+            )
+        )
+
+
+
+def test_safe_generation_error_metadata_reads_provider_status():
+    from src.generation.databricks_llm import (
+        _safe_generation_error_metadata,
+    )
+
+    class FakeProviderError(Exception):
+        status_code = 403
+        code = "PERMISSION_DENIED"
+
+    metadata = (
+        _safe_generation_error_metadata(
+            FakeProviderError(
+                "private provider message"
+            )
+        )
+    )
+
+    assert metadata == {
+        "cause_type":
+            "FakeProviderError",
+        "status_code":
+            403,
+        "error_code":
+            "PERMISSION_DENIED",
+    }
+
+    assert (
+        "private provider message"
+        not in str(metadata)
+    )
+
+
+def test_safe_generation_error_metadata_reads_chained_cause():
+    from src.generation.databricks_llm import (
+        DatabricksGenerationError,
+        _safe_generation_error_metadata,
+    )
+
+    class FakeAuthError(Exception):
+        status_code = 401
+        error_code = "AUTHENTICATION_FAILED"
+
+    try:
+        try:
+            raise FakeAuthError(
+                "private auth detail"
+            )
+        except FakeAuthError as exc:
+            raise DatabricksGenerationError(
+                "wrapped"
+            ) from exc
+
+    except DatabricksGenerationError as exc:
+        metadata = (
+            _safe_generation_error_metadata(
+                exc
+            )
+        )
+
+    assert metadata[
+        "cause_type"
+    ] == "FakeAuthError"
+
+    assert metadata[
+        "status_code"
+    ] == 401
+
+    assert metadata[
+        "error_code"
+    ] == "AUTHENTICATION_FAILED"
+
+    assert (
+        "private auth detail"
+        not in str(metadata)
+    )
+
+
+
+def test_databricks_generation_detects_app_runtime(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _is_databricks_app_runtime,
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_APP_NAME",
+        "test-app",
+    )
+
+    assert (
+        _is_databricks_app_runtime()
+        is True
+    )
+
+
+def test_databricks_generation_detects_non_app_runtime(
+    monkeypatch,
+):
+    from src.generation.databricks_llm import (
+        _is_databricks_app_runtime,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_APP_NAME",
+        raising=False,
+    )
+
+    assert (
+        _is_databricks_app_runtime()
+        is False
+    )

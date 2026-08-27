@@ -487,3 +487,323 @@ def test_parse_response_rejects_inconsistent_zero_result():
             DatabricksSearchRetriever
             ._parse_response(response)
         )
+
+
+def test_ai_search_client_uses_app_service_principal(
+    monkeypatch,
+):
+    from src.retrieval.databricks_search_retriever import (
+        _create_ai_search_client,
+    )
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setenv(
+        "DATABRICKS_HOST",
+        "https://workspace.example",
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_CLIENT_ID",
+        "app-client-id",
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_CLIENT_SECRET",
+        "app-client-secret",
+    )
+
+    # Deliberately present too:
+    # App SP must take precedence.
+    monkeypatch.setenv(
+        "DATABRICKS_TOKEN",
+        "local-token",
+    )
+
+    _create_ai_search_client(
+        FakeClient
+    )
+
+    assert captured[
+        "workspace_url"
+    ] == "https://workspace.example"
+
+    assert captured[
+        "service_principal_client_id"
+    ] == "app-client-id"
+
+    assert captured[
+        "service_principal_client_secret"
+    ] == "app-client-secret"
+
+    assert (
+        "personal_access_token"
+        not in captured
+    )
+
+
+def test_ai_search_client_uses_local_token(
+    monkeypatch,
+):
+    from src.retrieval.databricks_search_retriever import (
+        _create_ai_search_client,
+    )
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setenv(
+        "DATABRICKS_HOST",
+        "https://workspace.example",
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_TOKEN",
+        "local-token",
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_CLIENT_ID",
+        raising=False,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_CLIENT_SECRET",
+        raising=False,
+    )
+
+    _create_ai_search_client(
+        FakeClient
+    )
+
+    assert captured[
+        "workspace_url"
+    ] == "https://workspace.example"
+
+    assert captured[
+        "personal_access_token"
+    ] == "local-token"
+
+    assert (
+        "service_principal_client_id"
+        not in captured
+    )
+
+
+def test_ai_search_client_uses_runtime_auto_auth(
+    monkeypatch,
+):
+    from src.retrieval.databricks_search_retriever import (
+        _create_ai_search_client,
+    )
+
+    captured = {
+        "called": False,
+    }
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["called"] = True
+            captured["kwargs"] = kwargs
+
+    monkeypatch.delenv(
+        "DATABRICKS_HOST",
+        raising=False,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_TOKEN",
+        raising=False,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_CLIENT_ID",
+        raising=False,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_CLIENT_SECRET",
+        raising=False,
+    )
+
+    _create_ai_search_client(
+        FakeClient
+    )
+
+    assert captured["called"] is True
+    assert captured["kwargs"] == {}
+
+
+
+def test_app_runtime_detection(
+    monkeypatch,
+):
+    from src.retrieval.databricks_search_retriever import (
+        _is_databricks_app_runtime,
+    )
+
+    monkeypatch.setenv(
+        "DATABRICKS_APP_NAME",
+        "test-app",
+    )
+
+    assert (
+        _is_databricks_app_runtime()
+        is True
+    )
+
+
+def test_non_app_runtime_detection(
+    monkeypatch,
+):
+    from src.retrieval.databricks_search_retriever import (
+        _is_databricks_app_runtime,
+    )
+
+    monkeypatch.delenv(
+        "DATABRICKS_APP_NAME",
+        raising=False,
+    )
+
+    assert (
+        _is_databricks_app_runtime()
+        is False
+    )
+
+
+def test_workspace_sdk_search_adapter_maps_query():
+    import json
+
+    from src.retrieval.databricks_search_retriever import (
+        _WorkspaceSdkSearchIndex,
+    )
+
+    captured = {}
+
+    class FakeResponse:
+        def as_dict(self):
+            return {
+                "manifest": {
+                    "columns": [],
+                },
+                "result": {
+                    "data_array": [],
+                },
+            }
+
+    class FakeIndexes:
+        def query_index(
+            self,
+            **kwargs,
+        ):
+            captured.update(kwargs)
+            return FakeResponse()
+
+    class FakeWorkspaceClient:
+        vector_search_indexes = (
+            FakeIndexes()
+        )
+
+    index = _WorkspaceSdkSearchIndex(
+        FakeWorkspaceClient(),
+        "catalog.schema.index",
+    )
+
+    response = index.similarity_search(
+        query_text="safe test query",
+        columns=[
+            "chunk_id",
+            "text",
+        ],
+        num_results=3,
+        query_type="hybrid",
+        filters={
+            "document_id": [
+                "doc-a",
+            ],
+        },
+    )
+
+    assert captured[
+        "index_name"
+    ] == "catalog.schema.index"
+
+    assert captured[
+        "query_type"
+    ] == "HYBRID"
+
+    assert captured[
+        "num_results"
+    ] == 3
+
+    assert json.loads(
+        captured["filters_json"]
+    ) == {
+        "document_id": [
+            "doc-a"
+        ]
+    }
+
+    assert response == {
+        "manifest": {
+            "columns": [],
+        },
+        "result": {
+            "data_array": [],
+        },
+    }
+
+
+def test_workspace_sdk_search_adapter_without_filters():
+    from src.retrieval.databricks_search_retriever import (
+        _WorkspaceSdkSearchIndex,
+    )
+
+    captured = {}
+
+    class FakeResponse:
+        def as_dict(self):
+            return {
+                "manifest": {
+                    "columns": [],
+                },
+                "result": {
+                    "data_array": [],
+                },
+            }
+
+    class FakeIndexes:
+        def query_index(
+            self,
+            **kwargs,
+        ):
+            captured.update(kwargs)
+            return FakeResponse()
+
+    class FakeWorkspaceClient:
+        vector_search_indexes = (
+            FakeIndexes()
+        )
+
+    index = _WorkspaceSdkSearchIndex(
+        FakeWorkspaceClient(),
+        "catalog.schema.index",
+    )
+
+    index.similarity_search(
+        query_text="test",
+        columns=["text"],
+        num_results=2,
+    )
+
+    assert (
+        captured["filters_json"]
+        is None
+    )

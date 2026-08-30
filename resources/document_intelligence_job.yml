@@ -1,0 +1,112 @@
+resources:
+  jobs:
+    document_intelligence_pipeline:
+      name: document-intelligence-pipeline
+
+      max_concurrent_runs: 1
+      timeout_seconds: 5400
+
+      environments:
+        - environment_key: docintel_runtime
+          spec:
+            environment_version: "5"
+            dependencies:
+              - pypdf==6.10.2
+              - pydantic-settings==2.14.0
+              - structlog==25.5.0
+            dependencies:
+              - pypdf==6.10.2
+              - pydantic-settings==2.14.0
+              - structlog==25.5.0
+
+      tasks:
+        - task_key: ingest
+          environment_key: docintel_runtime
+
+          spark_python_task:
+            python_file: ../databricks/jobs/01_ingest.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 900
+
+        - task_key: extract_silver
+          depends_on:
+            - task_key: ingest
+
+          environment_key: docintel_runtime
+
+          spark_python_task:
+            python_file: ../databricks/jobs/02_extract_silver.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+
+        - task_key: quality_gate
+          depends_on:
+            - task_key: extract_silver
+
+          environment_key: docintel_runtime
+
+          spark_python_task:
+            python_file: ../databricks/jobs/03_quality_gate.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+
+          max_retries: 0
+          retry_on_timeout: false
+          timeout_seconds: 600
+
+        - task_key: publish_gold
+          depends_on:
+            - task_key: quality_gate
+
+          environment_key: docintel_runtime
+
+          spark_python_task:
+            python_file: ../databricks/jobs/04_publish_gold.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1200
+
+        - task_key: search_sync_validate
+          depends_on:
+            - task_key: publish_gold
+
+          environment_key: docintel_runtime
+
+          spark_python_task:
+            python_file: ../databricks/jobs/05_search_sync_validate.py
+            parameters:
+              - --index-name
+              - ${var.ai_search_index_name}
+              - --source-table
+              - ${var.catalog}.gold.child_chunks
+              - --parent-table
+              - ${var.catalog}.gold.parent_chunks
+              - --chunking-manifest-table
+              - ${var.catalog}.gold.chunking_manifest
+              - --timeout-seconds
+              - "900"
+              - --poll-seconds
+              - "10"
+
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          timeout_seconds: 1200

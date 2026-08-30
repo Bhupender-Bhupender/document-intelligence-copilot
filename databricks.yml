@@ -1,0 +1,19 @@
+﻿bundle:
+  name: document-intelligence-copilot
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog used by Document Intelligence.
+    default: docintel_dev
+
+  ai_search_index_name:
+    description: Existing triggered Delta Sync AI Search index.
+    default: docintel_dev.gold.child_chunks_index
+
+targets:
+  dev:
+    default: true
+    mode: development

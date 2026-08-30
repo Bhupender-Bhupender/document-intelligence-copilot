@@ -25,10 +25,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Tuple
 
+from src.core.config import config
 from src.ingestion.readers.pdf_reader import read_pdf_file
 from src.ingestion.readers.text_reader import read_text_file
 from src.ocr.ocr_router import route_pdf_pages_through_ocr
-from src.parsing.docling_parser import parse_with_docling
 from src.schema.models import ParsedPage, RawDocument
 from src.utils.logging_utils import get_logger
 
@@ -84,14 +84,34 @@ def route_file(file_path: Path) -> Tuple[RawDocument, List[ParsedPage]]:
         return read_text_file(file_path)
 
     if suffix in _PDF_FORMATS:
-        raw_doc, pages = read_pdf_file(file_path)
-        # Pass 2: OCR recovery for pages pypdf could not extract text from.
-        # route_pdf_pages_through_ocr is a no-op when all pages are non-empty.
-        pages = route_pdf_pages_through_ocr(file_path, raw_doc, pages)
+        raw_doc, pages = read_pdf_file(
+            file_path
+        )
+
+        # Local development retains the existing
+        # Docling/RapidOCR recovery path.
+        #
+        # Databricks deliberately preserves empty/
+        # weak pages here so the managed Silver
+        # recovery stage can process them through
+        # ai_parse_document.
+        if config.runtime_mode != "databricks":
+            pages = route_pdf_pages_through_ocr(
+                file_path,
+                raw_doc,
+                pages,
+            )
+
         return raw_doc, pages
 
     if suffix in _DOCLING_FORMATS:
-        return parse_with_docling(file_path)
+        from src.parsing.docling_parser import (
+            parse_with_docling,
+        )
+
+        return parse_with_docling(
+            file_path
+        )
 
     if suffix in _DEFERRED_FORMATS:
         raise UnsupportedFormatError(

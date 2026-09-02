@@ -23,6 +23,15 @@ from typing import (
 
 from src.core.config import config
 
+from src.llmops.tracing import (
+    LLM_CALL_SPAN,
+    LLM_CALL_SPAN_TYPE,
+    PROMPT_BUILD_SPAN,
+    PROMPT_BUILD_SPAN_TYPE,
+    set_safe_span_attributes,
+    start_safe_span,
+)
+
 from src.generation.evidence_prompt import (
     build_evidence_grounded_messages,
 )
@@ -72,26 +81,77 @@ def generate_from_evidence(
         or config.generation_model
     )
 
-    messages = (
-        build_evidence_grounded_messages(
-            request.query,
-            request.evidence,
+    with start_safe_span(
+        name=PROMPT_BUILD_SPAN,
+        span_type=PROMPT_BUILD_SPAN_TYPE,
+        attributes={
+            "evidence_count": len(
+                request.evidence
+            ),
+        },
+        enabled=(
+            config.llmops_tracing_enabled
+        ),
+    ) as prompt_span:
+        messages = (
+            build_evidence_grounded_messages(
+                request.query,
+                request.evidence,
+            )
         )
-    )
+
+        set_safe_span_attributes(
+            prompt_span,
+            {
+                "message_count": len(
+                    messages
+                ),
+            },
+        )
 
     started = _clock()
 
-    if _generator is not None:
-        raw_answer = _generator(
-            messages
-        )
-    else:
-        raw_answer = generate(
-            messages,
-            model=resolved_model,
-        )
+    with start_safe_span(
+        name=LLM_CALL_SPAN,
+        span_type=LLM_CALL_SPAN_TYPE,
+        attributes={
+            "model": resolved_model,
+            "generation_backend":
+                config.generation_backend,
+            "evidence_count": len(
+                request.evidence
+            ),
+        },
+        enabled=(
+            config.llmops_tracing_enabled
+        ),
+    ) as llm_span:
 
-    finished = _clock()
+        if _generator is not None:
+            raw_answer = _generator(
+                messages
+            )
+        else:
+            raw_answer = generate(
+                messages,
+                model=resolved_model,
+            )
+
+        finished = _clock()
+
+        set_safe_span_attributes(
+            llm_span,
+            {
+                "latency_ms": max(
+                    0.0,
+                    (
+                        finished
+                        - started
+                    )
+                    * 1000.0,
+                ),
+            },
+        )
 
     if not isinstance(
         raw_answer,

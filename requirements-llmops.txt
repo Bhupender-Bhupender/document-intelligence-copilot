@@ -1,0 +1,11 @@
+﻿# Phase 15 - local/offline LLMOps dependencies
+#
+# Full MLflow is required for:
+# - SQLite-backed local tracking
+# - GenAI evaluation
+# - experiment lifecycle validation
+#
+# Keep this separate from application and
+# Databricks pipeline runtime dependencies.
+
+mlflow==3.15.1

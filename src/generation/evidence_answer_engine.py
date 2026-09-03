@@ -1,4 +1,4 @@
-﻿"""
+"""
 Provider-independent answer generation from
 Phase 11 RetrievalEvidence.
 
@@ -11,6 +11,10 @@ the existing generation gateway.
 """
 
 from __future__ import annotations
+
+from src.observability.emitter import (
+    emit_operational_event_safely,
+)
 
 import time
 
@@ -56,7 +60,7 @@ GeneratorFn = Callable[
 ]
 
 
-def generate_from_evidence(
+def _generate_from_evidence_core(
     request: GenerationRequest,
     *,
     _generator: Optional[GeneratorFn] = None,
@@ -195,3 +199,120 @@ def generate_from_evidence(
             * 1000.0,
         ),
     )
+
+
+def generate_from_evidence(
+    request: GenerationRequest,
+    *,
+    _generator: Optional[
+        GeneratorFn
+    ] = None,
+    _clock: Callable[[], float] = (
+        time.perf_counter
+    ),
+    _event_emitter=None,
+    _event_clock: Callable[[], float] = (
+        time.perf_counter
+    ),
+) -> GenerationResponse:
+    """
+    Generate from evidence with privacy-safe operational
+    telemetry around the existing Phase 12 core.
+    """
+    event_started = (
+        _event_clock()
+    )
+
+    try:
+        response = (
+            _generate_from_evidence_core(
+                request,
+                _generator=_generator,
+                _clock=_clock,
+            )
+        )
+
+    except Exception as exc:
+        latency_ms = max(
+            0.0,
+            (
+                _event_clock()
+                - event_started
+            )
+            * 1000.0,
+        )
+
+        emit_operational_event_safely(
+            {
+                "event_name":
+                    "generation.answer.failed",
+
+                "component":
+                    "generation",
+
+                "operation":
+                    "generate_from_evidence",
+
+                "status":
+                    "error",
+
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "backend":
+                    config.generation_backend,
+
+                "latency_ms":
+                    latency_ms,
+
+                "error_type":
+                    type(exc).__name__,
+            },
+            _emitter=_event_emitter,
+        )
+
+        raise
+
+
+    emit_operational_event_safely(
+        {
+            "event_name":
+                "generation.answer.completed",
+
+            "component":
+                "generation",
+
+            "operation":
+                "generate_from_evidence",
+
+            "status":
+                "success",
+
+            "runtime_mode":
+                config.runtime_mode,
+
+            "backend":
+                response
+                .generation_backend,
+
+            "latency_ms":
+                response.latency_ms,
+
+            "evidence_count":
+                len(
+                    response.evidence
+                ),
+
+            "citation_count":
+                len(
+                    response.sources
+                ),
+
+            "generation_model":
+                response.model_used,
+        },
+        _emitter=_event_emitter,
+    )
+
+
+    return response

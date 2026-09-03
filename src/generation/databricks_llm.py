@@ -10,6 +10,12 @@ The adapter receives only messages prepared by the generation layer.
 
 from __future__ import annotations
 
+import time
+
+from src.observability.emitter import (
+    emit_operational_event_safely,
+)
+
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -273,7 +279,7 @@ def _is_databricks_app_runtime() -> bool:
 
 
 
-def generate_with_metadata(
+def _generate_with_metadata_core(
     messages: List[Dict[str, str]],
     model: Optional[str] = None,
     *,
@@ -409,6 +415,191 @@ def generate_with_metadata(
         ),
     )
 
+
+
+
+def generate_with_metadata(
+    messages: List[Dict[str, str]],
+    model: Optional[str] = None,
+    *,
+    max_tokens: Optional[int] = None,
+    _client: Optional[Any] = None,
+    _event_emitter=None,
+    _event_clock=time.perf_counter,
+) -> DatabricksGenerationResult:
+    """
+    Generate through the existing Databricks adapter while
+    emitting content-free provider operational telemetry.
+    """
+    event_started = (
+        _event_clock()
+    )
+
+    configured_model = str(
+        model
+        or config.databricks_generation_model
+        or ""
+    ).strip()
+
+    event_model = (
+        configured_model
+        or None
+    )
+
+
+    try:
+        result = (
+            _generate_with_metadata_core(
+                messages,
+                model=model,
+                max_tokens=max_tokens,
+                _client=_client,
+            )
+        )
+
+    except Exception as exc:
+        latency_ms = max(
+            0.0,
+            (
+                _event_clock()
+                - event_started
+            )
+            * 1000.0,
+        )
+
+
+        safe_metadata = (
+            _safe_generation_error_metadata(
+                exc
+            )
+        )
+
+
+        error_type = str(
+            safe_metadata.get(
+                "cause_type",
+                "",
+            )
+            or type(
+                exc
+            ).__name__
+        )
+
+
+        raw_status = (
+            safe_metadata.get(
+                "status_code"
+            )
+        )
+
+
+        http_status_code = (
+            raw_status
+            if (
+                isinstance(
+                    raw_status,
+                    int,
+                )
+                and not isinstance(
+                    raw_status,
+                    bool,
+                )
+                and 100
+                <= raw_status
+                <= 599
+            )
+            else None
+        )
+
+
+        emit_operational_event_safely(
+            {
+                "event_name":
+                    "generation.provider.failed",
+
+                "component":
+                    "generation",
+
+                "operation":
+                    "databricks_generation",
+
+                "status":
+                    "error",
+
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "backend":
+                    "databricks",
+
+                "latency_ms":
+                    latency_ms,
+
+                "http_status_code":
+                    http_status_code,
+
+                "error_type":
+                    error_type,
+
+                "generation_model":
+                    event_model,
+            },
+            _emitter=_event_emitter,
+        )
+
+        raise
+
+
+    latency_ms = max(
+        0.0,
+        (
+            _event_clock()
+            - event_started
+        )
+        * 1000.0,
+    )
+
+
+    emit_operational_event_safely(
+        {
+            "event_name":
+                "generation.provider.completed",
+
+            "component":
+                "generation",
+
+            "operation":
+                "databricks_generation",
+
+            "status":
+                "success",
+
+            "runtime_mode":
+                config.runtime_mode,
+
+            "backend":
+                "databricks",
+
+            "latency_ms":
+                latency_ms,
+
+            "prompt_tokens":
+                result.prompt_tokens,
+
+            "completion_tokens":
+                result.completion_tokens,
+
+            "total_tokens":
+                result.total_tokens,
+
+            "generation_model":
+                result.model,
+        },
+        _emitter=_event_emitter,
+    )
+
+
+    return result
 
 def generate(
     messages: List[Dict[str, str]],

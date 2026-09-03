@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from src.observability.emitter import (
+    emit_operational_event_safely,
+)
+
 import time
 import uuid
 
@@ -186,7 +190,7 @@ def _enforce_document_allowlist(
         )
 
 
-def run_retrieval_service(
+def _run_retrieval_service_core(
     request: RetrievalRequest,
     *,
     _retrieve: Optional[
@@ -332,3 +336,136 @@ def run_retrieval_service(
             applied_filters
         ),
     )
+
+
+def run_retrieval_service(
+    request: RetrievalRequest,
+    *,
+    _retrieve: Optional[
+        RetrieveFn
+    ] = None,
+    _parent_lookup: Optional[
+        ParentLookupFn
+    ] = None,
+    _clock: Callable[[], float] = (
+        time.perf_counter
+    ),
+    _event_emitter=None,
+    _event_clock: Callable[[], float] = (
+        time.perf_counter
+    ),
+) -> RetrievalResponse:
+    """
+    Execute retrieval with privacy-safe operational
+    telemetry around the existing Phase 11 core.
+    """
+    event_started = (
+        _event_clock()
+    )
+
+    try:
+        response = (
+            _run_retrieval_service_core(
+                request,
+                _retrieve=_retrieve,
+                _parent_lookup=(
+                    _parent_lookup
+                ),
+                _clock=_clock,
+            )
+        )
+
+    except Exception as exc:
+        latency_ms = max(
+            0.0,
+            (
+                _event_clock()
+                - event_started
+            )
+            * 1000.0,
+        )
+
+        emit_operational_event_safely(
+            {
+                "event_name":
+                    "retrieval.request.failed",
+
+                "component":
+                    "retrieval",
+
+                "operation":
+                    "run_retrieval_service",
+
+                "status":
+                    "error",
+
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "backend":
+                    config.search_backend,
+
+                "latency_ms":
+                    latency_ms,
+
+                "error_type":
+                    type(exc).__name__,
+            },
+            _emitter=_event_emitter,
+        )
+
+        raise
+
+
+    parent_context_count = sum(
+        1
+        for item
+        in response.results
+        if getattr(
+            item,
+            "parent_text",
+            None,
+        )
+    )
+
+
+    emit_operational_event_safely(
+        {
+            "event_name":
+                "retrieval.request.completed",
+
+            "component":
+                "retrieval",
+
+            "operation":
+                "run_retrieval_service",
+
+            "status":
+                "success",
+
+            "runtime_mode":
+                config.runtime_mode,
+
+            "backend":
+                config.search_backend,
+
+            "latency_ms":
+                response.latency_ms,
+
+            "result_count":
+                len(
+                    response.results
+                ),
+
+            "parent_context_count":
+                parent_context_count,
+
+            "retrieval_config_version":
+                response
+                .retrieval_config_version,
+        },
+        _emitter=_event_emitter,
+    )
+
+
+    return response

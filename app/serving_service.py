@@ -1,4 +1,4 @@
-﻿"""
+"""
 Shared application orchestration for Phase 13 serving.
 
 Both FastAPI and Gradio call this module directly.
@@ -18,6 +18,16 @@ from time import perf_counter
 from typing import Callable, Optional
 
 from src.core.config import config
+from src.llmops.tracing import (
+    GENERATION_SPAN,
+    GENERATION_SPAN_TYPE,
+    RAG_REQUEST_SPAN,
+    RAG_REQUEST_SPAN_TYPE,
+    RETRIEVAL_SPAN,
+    RETRIEVAL_SPAN_TYPE,
+    set_safe_span_attributes,
+    start_safe_span,
+)
 from src.generation.evidence_answer_engine import (
     generate_from_evidence,
 )
@@ -284,7 +294,7 @@ def retrieve_evidence(
         ) from exc
 
 
-def answer_with_evidence(
+def _answer_with_evidence_core(
     request: ServingAnswerRequest,
     *,
     _retrieval_runner: Optional[
@@ -293,6 +303,7 @@ def answer_with_evidence(
     _generation_runner: Optional[
         GenerationRunner
     ] = None,
+    _tracing_enabled: bool = False,
     _clock: Callable[[], float] = perf_counter,
 ) -> ServingAnswerResponse:
     """
@@ -326,11 +337,33 @@ def answer_with_evidence(
             )
         )
 
-        retrieval_response = (
-            retrieval_runner(
-                retrieval_request
+        with start_safe_span(
+            name=RETRIEVAL_SPAN,
+            span_type=RETRIEVAL_SPAN_TYPE,
+            attributes={
+                "top_k":
+                    retrieval_request.top_k,
+                "final_k":
+                    retrieval_request.final_k,
+            },
+            enabled=_tracing_enabled,
+        ) as retrieval_span:
+            retrieval_response = (
+                retrieval_runner(
+                    retrieval_request
+                )
             )
-        )
+
+            set_safe_span_attributes(
+                retrieval_span,
+                {
+                    "result_count": len(
+                        retrieval_response.results
+                    ),
+                    "latency_ms":
+                        retrieval_response.latency_ms,
+                },
+            )
 
         generation_request = (
             GenerationRequest(
@@ -342,11 +375,41 @@ def answer_with_evidence(
             )
         )
 
-        generation_response = (
-            generation_runner(
-                generation_request
+        with start_safe_span(
+            name=GENERATION_SPAN,
+            span_type=GENERATION_SPAN_TYPE,
+            attributes={
+                "model": resolved_model,
+                "generation_backend":
+                    config.generation_backend,
+                "evidence_count": len(
+                    retrieval_response.results
+                ),
+            },
+            enabled=_tracing_enabled,
+        ) as generation_span:
+            generation_response = (
+                generation_runner(
+                    generation_request
+                )
             )
-        )
+
+            set_safe_span_attributes(
+                generation_span,
+                {
+                    "source_count": len(
+                        generation_response.sources
+                    ),
+                    "evidence_count": len(
+                        generation_response.evidence
+                    ),
+                    "latency_ms":
+                        generation_response.latency_ms,
+                    "generation_contract_version":
+                        generation_response
+                        .generation_contract_version,
+                },
+            )
 
         total_latency_ms = (
             _clock() - started
@@ -416,3 +479,85 @@ def answer_with_evidence(
         raise ServingServiceError(
             "Answer service unavailable."
         ) from exc
+
+
+def answer_with_evidence(
+    request: ServingAnswerRequest,
+    *,
+    _retrieval_runner: Optional[
+        RetrievalRunner
+    ] = None,
+    _generation_runner: Optional[
+        GenerationRunner
+    ] = None,
+    _tracing_enabled: Optional[
+        bool
+    ] = None,
+    _clock: Callable[[], float] = perf_counter,
+) -> ServingAnswerResponse:
+    """
+    Run one evidence-grounded request with optional
+    metadata-only MLflow tracing.
+
+    Raw query, answer, evidence, prompt, and document
+    content are not intentionally recorded.
+    """
+    tracing_enabled = (
+        config.llmops_tracing_enabled
+        if _tracing_enabled is None
+        else _tracing_enabled
+    )
+
+    with start_safe_span(
+        name=RAG_REQUEST_SPAN,
+        span_type=RAG_REQUEST_SPAN_TYPE,
+        attributes={
+            "runtime_mode":
+                config.runtime_mode,
+            "generation_backend":
+                config.generation_backend,
+        },
+        enabled=tracing_enabled,
+    ) as root_span:
+
+        response = (
+            _answer_with_evidence_core(
+                request,
+                _retrieval_runner=(
+                    _retrieval_runner
+                ),
+                _generation_runner=(
+                    _generation_runner
+                ),
+                _tracing_enabled=(
+                    tracing_enabled
+                ),
+                _clock=_clock,
+            )
+        )
+
+        set_safe_span_attributes(
+            root_span,
+            {
+                "evidence_count": len(
+                    response.evidence
+                ),
+                "citation_count": len(
+                    response.sources
+                ),
+                "retrieval_latency_ms":
+                    response.retrieval_latency_ms,
+                "generation_latency_ms":
+                    response.generation_latency_ms,
+                "total_latency_ms":
+                    response.total_latency_ms,
+                "retrieval_config_version":
+                    response
+                    .retrieval_config_version,
+                "generation_contract_version":
+                    response
+                    .generation_contract_version,
+            },
+        )
+
+        return response

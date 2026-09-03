@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import time
 import uuid
@@ -8,6 +8,14 @@ from typing import List, Optional
 
 from src.retrieval.evidence_builder import (
     build_retrieval_evidence,
+)
+
+from src.core.config import config
+from src.llmops.tracing import (
+    EVIDENCE_BUILD_SPAN,
+    EVIDENCE_BUILD_SPAN_TYPE,
+    set_safe_span_attributes,
+    start_safe_span,
 )
 from src.schema.models import (
     DocumentChunk,
@@ -259,17 +267,47 @@ def run_retrieval_service(
                 "retrieval results."
             )
 
-    evidence = (
-        build_retrieval_evidence(
-            selected,
-            parents=parents,
-            final_k=request.final_k,
-            include_parent_context=(
-                request
-                .include_parent_context
-            ),
+    with start_safe_span(
+        name=EVIDENCE_BUILD_SPAN,
+        span_type=EVIDENCE_BUILD_SPAN_TYPE,
+        attributes={
+            "selected_count": len(selected),
+            "final_k": request.final_k,
+            "include_parent_context":
+                request.include_parent_context,
+        },
+        enabled=(
+            config.llmops_tracing_enabled
+        ),
+    ) as evidence_span:
+        evidence = (
+            build_retrieval_evidence(
+                selected,
+                parents=parents,
+                final_k=request.final_k,
+                include_parent_context=(
+                    request
+                    .include_parent_context
+                ),
+            )
         )
-    )
+
+        set_safe_span_attributes(
+            evidence_span,
+            {
+                "evidence_count": len(
+                    evidence
+                ),
+                "citation_count": len(
+                    evidence
+                ),
+                "parent_context_count": sum(
+                    1
+                    for item in evidence
+                    if item.parent_text
+                ),
+            },
+        )
 
     latency_ms = max(
         0.0,

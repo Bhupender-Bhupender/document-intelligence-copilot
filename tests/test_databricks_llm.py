@@ -394,3 +394,130 @@ def test_databricks_generation_detects_non_app_runtime(
         _is_databricks_app_runtime()
         is False
     )
+
+
+def test_generate_uses_workspace_model_serving_openai_client(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    import src.generation.databricks_llm as module
+
+
+    captured = {
+        "timeout": None,
+        "max_retries": None,
+        "model": None,
+        "messages": None,
+        "max_tokens": None,
+    }
+
+
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content="answer",
+                ),
+                finish_reason="stop",
+            )
+        ],
+        usage=SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=3,
+            total_tokens=13,
+        ),
+    )
+
+
+    class FakeCompletions:
+
+        def create(
+            self,
+            *,
+            model,
+            messages,
+            max_tokens,
+        ):
+            captured["model"] = model
+            captured["messages"] = messages
+            captured["max_tokens"] = max_tokens
+
+            return response
+
+
+    fake_openai_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=FakeCompletions(),
+        )
+    )
+
+
+    class FakeServingEndpoints:
+
+        def get_open_ai_client(
+            self,
+            *,
+            timeout,
+            max_retries,
+        ):
+            captured["timeout"] = timeout
+            captured["max_retries"] = max_retries
+
+            return fake_openai_client
+
+
+    class FakeWorkspaceClient:
+
+        def __init__(self):
+            self.serving_endpoints = (
+                FakeServingEndpoints()
+            )
+
+
+    import databricks.sdk
+
+    monkeypatch.setattr(
+        databricks.sdk,
+        "WorkspaceClient",
+        FakeWorkspaceClient,
+    )
+
+
+    result = module.generate_with_metadata(
+        messages=[
+            {
+                "role": "user",
+                "content": "test",
+            }
+        ],
+        model="test-model",
+        max_tokens=32,
+    )
+
+
+    assert captured["model"] == "test-model"
+
+    assert captured["messages"] == [
+        {
+            "role": "user",
+            "content": "test",
+        }
+    ]
+
+    assert captured["max_tokens"] == 32
+
+    assert captured["max_retries"] == 0
+
+    assert captured["timeout"] == (
+        module.config
+        .databricks_generation_timeout_seconds
+    )
+
+    assert result.text == "answer"
+    assert result.model == "test-model"
+    assert result.prompt_tokens == 10
+    assert result.completion_tokens == 3
+    assert result.total_tokens == 13
+    assert result.finish_reason == "stop"
+

@@ -21,7 +21,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root resolved relative to this file's location:
-#   src/core/config.py Ã¢â€ â€™ parent Ã¢â€ â€™ src/core Ã¢â€ â€™ parent Ã¢â€ â€™ src Ã¢â€ â€™ parent Ã¢â€ â€™ project root
+#   src/core/config.py ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ parent ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ src/core ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ parent ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ src ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ parent ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -48,6 +48,15 @@ class AppConfig(BaseSettings):
         description="Execution environment for the application.",
     )
 
+    llmops_tracing_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable metadata-only MLflow tracing for serving. "
+            "Raw queries, answers, evidence, prompts, and document "
+            "content are never intentionally recorded."
+        ),
+    )
+
     # ------------------------------------------------------------------ #
     # Path settings                                                        #
     # ------------------------------------------------------------------ #
@@ -68,7 +77,7 @@ class AppConfig(BaseSettings):
         default=_PROJECT_ROOT / "data" / "processed" / "manifests",
         description="Output directory for pipeline run manifests.",
     )
-    # Legacy ChromaDB path Ã¢â‚¬â€ kept for non-destructive reference only.
+    # Legacy ChromaDB path ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â kept for non-destructive reference only.
     # The new pipeline does not write to this location.
     legacy_chroma_dir: Path = Field(
         default=_PROJECT_ROOT / "data" / "chroma_db",
@@ -148,7 +157,7 @@ class AppConfig(BaseSettings):
         description="Word overlap between consecutive flat chunks.",
     )
 
-    # Hierarchical chunking Ã¢â‚¬â€ parent/child windows for hybrid RAG.
+    # Hierarchical chunking ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â parent/child windows for hybrid RAG.
     # Parents provide broad synthesis context; children are the retrieval units.
     parent_chunk_size_words: int = Field(
         default=400,
@@ -310,6 +319,6 @@ class AppConfig(BaseSettings):
             "parent-chunk lookup when no active Spark session is available."
         ),
     )
-# Module-level singleton Ã¢â‚¬â€ import this instance in other modules.
+# Module-level singleton ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â import this instance in other modules.
 # Constructed once at import time using environment / .env file values.
 config = AppConfig()

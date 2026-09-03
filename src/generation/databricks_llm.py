@@ -314,44 +314,25 @@ def generate_with_metadata(
 
     if client is None:
         try:
-            if _is_databricks_app_runtime():
-                # Databricks Apps run under a dedicated service
-                # principal. DatabricksOpenAI uses Databricks
-                # unified authentication directly, avoiding
-                # manual bearer-token extraction.
-                from databricks_openai import (
-                    DatabricksOpenAI,
-                )
+            from databricks.sdk import (
+                WorkspaceClient,
+            )
 
-                client = DatabricksOpenAI()
+            workspace_client = (
+                WorkspaceClient()
+            )
 
-            else:
-                # Preserve the proven local/U2M development
-                # path from Phase 12.
-                from openai import OpenAI
-
-                host = _resolve_workspace_host()
-                token = _resolve_token()
-
-                client = OpenAI(
-                    api_key=token,
-                    base_url=(
-                        f"{host}/ai-gateway/mlflow/v1"
-                    ),
+            client = (
+                workspace_client
+                .serving_endpoints
+                .get_open_ai_client(
                     timeout=(
                         config
                         .databricks_generation_timeout_seconds
                     ),
+                    max_retries=0,
                 )
-
-        except DatabricksGenerationError as exc:
-            logger.warning(
-                "databricks_generation_client_init_failed",
-                **_safe_generation_error_metadata(
-                    exc
-                ),
             )
-            raise
 
         except Exception as exc:
             logger.warning(

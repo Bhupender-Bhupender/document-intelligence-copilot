@@ -18,6 +18,12 @@ from time import perf_counter
 from typing import Callable, Optional
 
 from src.core.config import config
+from src.observability.emitter import (
+    emit_operational_event,
+)
+from src.observability.events import (
+    OperationalEvent,
+)
 from src.llmops.tracing import (
     GENERATION_SPAN,
     GENERATION_SPAN_TYPE,
@@ -113,6 +119,37 @@ def _resolve_generation_model(
         )
 
     return model
+
+
+def _emit_operational_event_safely(
+    *,
+    emitter: Callable[
+        [OperationalEvent],
+        None,
+    ],
+    event_kwargs: dict[
+        str,
+        object,
+    ],
+) -> None:
+    """
+    Emit operational telemetry without allowing monitoring
+    failures to break the serving request.
+    """
+    try:
+        emitter(
+            OperationalEvent(
+                **event_kwargs
+            )
+        )
+
+    except Exception as exc:
+        logger.warning(
+            "operational_event_emit_failed",
+            error_type=type(
+                exc
+            ).__name__,
+        )
 
 
 def get_readiness() -> ReadinessResponse:
@@ -270,28 +307,177 @@ def retrieve_evidence(
     _retrieval_runner: Optional[
         RetrievalRunner
     ] = None,
+    _event_emitter: Optional[
+        Callable[
+            [OperationalEvent],
+            None,
+        ]
+    ] = None,
+    _event_clock: Callable[
+        [],
+        float,
+    ] = perf_counter,
 ) -> RetrievalResponse:
-    """Execute the Phase 11 retrieval service."""
+    """
+    Execute the Phase 11 retrieval service and emit one
+    privacy-safe serving-boundary operational event.
+    """
     runner = (
         _retrieval_runner
         or run_retrieval_service
     )
 
-    try:
-        return runner(request)
+    event_emitter = (
+        _event_emitter
+        or emit_operational_event
+    )
 
-    except ServingServiceError:
+    event_started = (
+        _event_clock()
+    )
+
+    try:
+        response = (
+            runner(
+                request
+            )
+        )
+
+    except ServingServiceError as exc:
+        latency_ms = max(
+            0.0,
+            (
+                _event_clock()
+                - event_started
+            )
+            * 1000.0,
+        )
+
+        _emit_operational_event_safely(
+            emitter=event_emitter,
+            event_kwargs={
+                "event_name":
+                    "serving.retrieve.failed",
+
+                "component":
+                    "serving",
+
+                "operation":
+                    "retrieve_evidence",
+
+                "status":
+                    "error",
+
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "backend":
+                    config.search_backend,
+
+                "latency_ms":
+                    latency_ms,
+
+                "error_type":
+                    type(exc).__name__,
+            },
+        )
+
         raise
 
     except Exception as exc:
         logger.warning(
             "serving_retrieval_failed",
-            error_type=type(exc).__name__,
+            error_type=type(
+                exc
+            ).__name__,
         )
 
-        raise ServingServiceError(
-            "Retrieval service unavailable."
-        ) from exc
+        wrapped = (
+            ServingServiceError(
+                "Retrieval service unavailable."
+            )
+        )
+
+        latency_ms = max(
+            0.0,
+            (
+                _event_clock()
+                - event_started
+            )
+            * 1000.0,
+        )
+
+        _emit_operational_event_safely(
+            emitter=event_emitter,
+            event_kwargs={
+                "event_name":
+                    "serving.retrieve.failed",
+
+                "component":
+                    "serving",
+
+                "operation":
+                    "retrieve_evidence",
+
+                "status":
+                    "error",
+
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "backend":
+                    config.search_backend,
+
+                "latency_ms":
+                    latency_ms,
+
+                "error_type":
+                    type(
+                        wrapped
+                    ).__name__,
+            },
+        )
+
+        raise wrapped from exc
+
+
+    _emit_operational_event_safely(
+        emitter=event_emitter,
+        event_kwargs={
+            "event_name":
+                "serving.retrieve.completed",
+
+            "component":
+                "serving",
+
+            "operation":
+                "retrieve_evidence",
+
+            "status":
+                "success",
+
+            "runtime_mode":
+                config.runtime_mode,
+
+            "backend":
+                config.search_backend,
+
+            "latency_ms":
+                response.latency_ms,
+
+            "result_count":
+                len(
+                    response.results
+                ),
+
+            "retrieval_config_version":
+                response
+                .retrieval_config_version,
+        },
+    )
+
+    return response
+
 
 
 def _answer_with_evidence_core(
@@ -493,11 +679,25 @@ def answer_with_evidence(
     _tracing_enabled: Optional[
         bool
     ] = None,
-    _clock: Callable[[], float] = perf_counter,
+    _clock: Callable[
+        [],
+        float,
+    ] = perf_counter,
+    _event_emitter: Optional[
+        Callable[
+            [OperationalEvent],
+            None,
+        ]
+    ] = None,
+    _event_clock: Callable[
+        [],
+        float,
+    ] = perf_counter,
 ) -> ServingAnswerResponse:
     """
     Run one evidence-grounded request with optional
-    metadata-only MLflow tracing.
+    metadata-only MLflow tracing and privacy-safe
+    operational telemetry.
 
     Raw query, answer, evidence, prompt, and document
     content are not intentionally recorded.
@@ -508,56 +708,168 @@ def answer_with_evidence(
         else _tracing_enabled
     )
 
-    with start_safe_span(
-        name=RAG_REQUEST_SPAN,
-        span_type=RAG_REQUEST_SPAN_TYPE,
-        attributes={
-            "runtime_mode":
-                config.runtime_mode,
-            "generation_backend":
-                config.generation_backend,
-        },
-        enabled=tracing_enabled,
-    ) as root_span:
+    event_emitter = (
+        _event_emitter
+        or emit_operational_event
+    )
 
-        response = (
-            _answer_with_evidence_core(
-                request,
-                _retrieval_runner=(
-                    _retrieval_runner
-                ),
-                _generation_runner=(
-                    _generation_runner
-                ),
-                _tracing_enabled=(
-                    tracing_enabled
-                ),
-                _clock=_clock,
+    event_started = (
+        _event_clock()
+    )
+
+
+    try:
+        with start_safe_span(
+            name=RAG_REQUEST_SPAN,
+            span_type=RAG_REQUEST_SPAN_TYPE,
+            attributes={
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "generation_backend":
+                    config
+                    .generation_backend,
+            },
+            enabled=tracing_enabled,
+        ) as root_span:
+
+            response = (
+                _answer_with_evidence_core(
+                    request,
+                    _retrieval_runner=(
+                        _retrieval_runner
+                    ),
+                    _generation_runner=(
+                        _generation_runner
+                    ),
+                    _tracing_enabled=(
+                        tracing_enabled
+                    ),
+                    _clock=_clock,
+                )
             )
+
+            set_safe_span_attributes(
+                root_span,
+                {
+                    "evidence_count":
+                        len(
+                            response.evidence
+                        ),
+
+                    "citation_count":
+                        len(
+                            response.sources
+                        ),
+
+                    "retrieval_latency_ms":
+                        response
+                        .retrieval_latency_ms,
+
+                    "generation_latency_ms":
+                        response
+                        .generation_latency_ms,
+
+                    "total_latency_ms":
+                        response
+                        .total_latency_ms,
+
+                    "retrieval_config_version":
+                        response
+                        .retrieval_config_version,
+
+                    "generation_contract_version":
+                        response
+                        .generation_contract_version,
+                },
+            )
+
+    except Exception as exc:
+        latency_ms = max(
+            0.0,
+            (
+                _event_clock()
+                - event_started
+            )
+            * 1000.0,
         )
 
-        set_safe_span_attributes(
-            root_span,
-            {
-                "evidence_count": len(
-                    response.evidence
-                ),
-                "citation_count": len(
-                    response.sources
-                ),
-                "retrieval_latency_ms":
-                    response.retrieval_latency_ms,
-                "generation_latency_ms":
-                    response.generation_latency_ms,
-                "total_latency_ms":
-                    response.total_latency_ms,
-                "retrieval_config_version":
-                    response
-                    .retrieval_config_version,
-                "generation_contract_version":
-                    response
-                    .generation_contract_version,
+        _emit_operational_event_safely(
+            emitter=event_emitter,
+            event_kwargs={
+                "event_name":
+                    "serving.answer.failed",
+
+                "component":
+                    "serving",
+
+                "operation":
+                    "answer_with_evidence",
+
+                "status":
+                    "error",
+
+                "runtime_mode":
+                    config.runtime_mode,
+
+                "backend":
+                    config
+                    .generation_backend,
+
+                "latency_ms":
+                    latency_ms,
+
+                "error_type":
+                    type(exc).__name__,
             },
         )
 
-        return response
+        raise
+
+
+    _emit_operational_event_safely(
+        emitter=event_emitter,
+        event_kwargs={
+            "event_name":
+                "serving.answer.completed",
+
+            "component":
+                "serving",
+
+            "operation":
+                "answer_with_evidence",
+
+            "status":
+                "success",
+
+            "runtime_mode":
+                config.runtime_mode,
+
+            "backend":
+                response
+                .generation_backend,
+
+            "latency_ms":
+                response
+                .total_latency_ms,
+
+            "evidence_count":
+                len(
+                    response.evidence
+                ),
+
+            "citation_count":
+                len(
+                    response.sources
+                ),
+
+            "generation_model":
+                response.model_used,
+
+            "retrieval_config_version":
+                response
+                .retrieval_config_version,
+        },
+    )
+
+    return response

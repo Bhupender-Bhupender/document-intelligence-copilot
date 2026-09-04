@@ -319,6 +319,58 @@ class AppConfig(BaseSettings):
             "parent-chunk lookup when no active Spark session is available."
         ),
     )
+
+    observability_persistence_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable best-effort persistence of privacy-safe "
+            "operational events to Unity Catalog Delta."
+        ),
+    )
+
+    databricks_operational_events_table: str = Field(
+        default="",
+        description=(
+            "Fully qualified Unity Catalog Delta table for "
+            "privacy-safe operational events."
+        ),
+    )
+
+    databricks_operational_metrics_hourly_table: str = Field(
+        default="",
+        description=(
+            "Fully qualified Unity Catalog Delta table for "
+            "hourly operational aggregates."
+        ),
+    )
+
+    observability_event_batch_size: int = Field(
+        default=25,
+        ge=1,
+        le=500,
+        description=(
+            "Maximum operational events buffered before "
+            "a Databricks Statement Execution batch write."
+        ),
+    )
+
+    observability_flush_interval_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        description=(
+            "Maximum age of a non-empty operational-event "
+            "buffer before the next event triggers a flush."
+        ),
+    )
+
+    observability_statement_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0.0,
+        description=(
+            "Timeout for operational monitoring SQL "
+            "statements executed through Databricks."
+        ),
+    )
 # Module-level singleton ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â import this instance in other modules.
 # Constructed once at import time using environment / .env file values.
 config = AppConfig()
